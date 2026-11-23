@@ -1,0 +1,236 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Check, Copy, Loader2, Plus, X } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { ButtonLink } from "@/components/button-link";
+import { api, apiError } from "@/lib/api";
+import { slugify } from "@/lib/utils";
+
+const SUGGESTIONS = ["Web Development", "Data Science", "Mobile Development", "Cloud & DevOps", "UI/UX Design", "AI & ML"];
+
+type Result = { slug: string; spaces: string[]; ownerInviteUrl: string; emailed: boolean; emailError?: string; ownerAlreadyMember: boolean };
+
+export function ProvisionForm() {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  const [slugTouched, setSlugTouched] = useState(false);
+  const [description, setDescription] = useState("");
+  const [ownerEmail, setOwnerEmail] = useState("");
+  const [spaces, setSpaces] = useState<string[]>([]);
+  const [draft, setDraft] = useState("");
+  const [result, setResult] = useState<Result | null>(null);
+  const [copied, setCopied] = useState(false);
+  const effectiveSlug = slugTouched ? slug : slugify(name);
+
+  function addSpace(value: string) {
+    const v = value.trim();
+    if (!v || spaces.some((s) => s.toLowerCase() === v.toLowerCase()) || spaces.length >= 20) return;
+    setSpaces((s) => [...s, v]);
+    setDraft("");
+  }
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const pendingSpaces = draft.trim() ? [...spaces, draft.trim()] : spaces;
+    start(async () => {
+      const { data, error } = await api.admin.communities.post({
+        name,
+        slug: effectiveSlug,
+        description: description || undefined,
+        ownerEmail,
+        spaces: pendingSpaces,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      });
+      if (error) return void toast.error(apiError(error));
+      setResult(data);
+      toast.success(`${name} is live at /c/${data.slug}`);
+      router.refresh();
+    });
+  }
+
+  if (result) {
+    return (
+      <div className="rounded-2xl border bg-card p-6">
+        <div className="grid size-10 place-items-center rounded-xl bg-moss-soft text-moss">
+          <Check className="size-5" />
+        </div>
+        <h2 className="mt-4 text-xl font-bold">{name} is provisioned</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Spaces: {result.spaces.map((s) => `/c/${result.slug}/${s}`).join(", ")}
+        </p>
+        <div className="mt-5 rounded-xl border border-dashed bg-muted/40 p-3">
+          <div className="text-xs font-medium">Owner invite for {ownerEmail}</div>
+          <div className="mt-2 flex items-center gap-2">
+            <code className="min-w-0 flex-1 truncate font-mono text-xs">{result.ownerInviteUrl}</code>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                await navigator.clipboard.writeText(result.ownerInviteUrl);
+                setCopied(true);
+              }}
+            >
+              {copied ? <Check /> : <Copy />} {copied ? "Copied" : "Copy"}
+            </Button>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {result.ownerAlreadyMember
+              ? "They already had an account, so they're Owner now. "
+              : ""}
+            {result.emailed
+              ? "We emailed them a sign-in link that opens this invite."
+              : `The email didn't send${result.emailError ? ` (${result.emailError})` : ""}. Send them this link yourself.`}
+          </p>
+        </div>
+        <div className="mt-6 flex flex-wrap gap-2">
+          <ButtonLink href={`/admin/communities/${result.slug}`}>View in Global House</ButtonLink>
+          <ButtonLink href={`/c/${result.slug}`} variant="outline">
+            Open portal
+          </ButtonLink>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setResult(null);
+              setName("");
+              setSlug("");
+              setSlugTouched(false);
+              setDescription("");
+              setOwnerEmail("");
+              setSpaces([]);
+              setCopied(false);
+            }}
+          >
+            Provision another
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-8">
+      <section className="space-y-5 rounded-2xl border bg-card p-6">
+        <h2 className="text-base font-bold">Community</h2>
+        <div className="grid gap-5 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="name">Community name</Label>
+            <Input id="name" required minLength={2} maxLength={80} placeholder="GDG OAU" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="slug">URL slug</Label>
+            <div className="flex items-center rounded-lg border bg-muted/40 pl-3 font-mono text-xs text-muted-foreground focus-within:ring-3 focus-within:ring-ring/50">
+              <span>/c/</span>
+              <input
+                id="slug"
+                required
+                pattern="[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?"
+                title="Lowercase letters, numbers and hyphens"
+                className="h-8 min-w-0 flex-1 bg-transparent pr-3 text-foreground outline-none"
+                placeholder="gdg-oau"
+                value={effectiveSlug}
+                onChange={(e) => {
+                  setSlugTouched(true);
+                  setSlug(e.target.value.toLowerCase());
+                }}
+              />
+            </div>
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="description">Description</Label>
+          <Textarea
+            id="description"
+            rows={2}
+            maxLength={500}
+            placeholder="Google Developer Group at Obafemi Awolowo University."
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </div>
+      </section>
+
+      <section className="space-y-4 rounded-2xl border bg-card p-6">
+        <div>
+          <h2 className="text-base font-bold">Spaces</h2>
+          <p className="text-sm text-muted-foreground">
+            The tracks this community runs. Each one gets its own roadmap, team and leaderboard. Leave empty for a single
+            &ldquo;General&rdquo; space.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {spaces.map((s) => (
+            <span key={s} className="inline-flex items-center gap-1.5 rounded-lg border bg-background py-1 pr-1 pl-3 text-sm">
+              {s}
+              <span className="font-mono text-[10px] text-muted-foreground">/{slugify(s)}</span>
+              <button
+                type="button"
+                aria-label={`Remove ${s}`}
+                onClick={() => setSpaces((all) => all.filter((x) => x !== s))}
+                className="grid size-5 place-items-center rounded hover:bg-muted"
+              >
+                <X className="size-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <Input
+            placeholder="Add a space, e.g. Web Development"
+            value={draft}
+            maxLength={60}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                addSpace(draft);
+              }
+            }}
+          />
+          <Button type="button" variant="outline" onClick={() => addSpace(draft)} disabled={!draft.trim()}>
+            <Plus /> Add
+          </Button>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {SUGGESTIONS.filter((s) => !spaces.includes(s)).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => addSpace(s)}
+              className="rounded-full border border-dashed px-2.5 py-0.5 text-xs text-muted-foreground transition-colors hover:border-solid hover:text-foreground"
+            >
+              + {s}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="space-y-4 rounded-2xl border bg-card p-6">
+        <div>
+          <h2 className="text-base font-bold">Owner</h2>
+          <p className="text-sm text-muted-foreground">
+            The community lead. They get Lead access in every space and can appoint admins, leads, managers and mentors.
+          </p>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="owner">Owner email</Label>
+          <Input id="owner" type="email" required placeholder="lead@gdg-oau.dev" value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} />
+        </div>
+      </section>
+
+      <div className="flex justify-end">
+        <Button type="submit" size="lg" className="h-11 px-5" disabled={pending || !name || !effectiveSlug || !ownerEmail}>
+          {pending ? <Loader2 className="animate-spin" /> : null} Provision community
+        </Button>
+      </div>
+    </form>
+  );
+}
