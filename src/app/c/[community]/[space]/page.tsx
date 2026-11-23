@@ -30,16 +30,16 @@ export default async function SpaceHomePage({ params }: { params: Promise<{ comm
       <PageHeader eyebrow={space.name} title={`Good to see you, ${firstName}.`} description={space.description ?? undefined} />
 
       <div className="grid gap-4 lg:grid-cols-[1.5fr_1fr]">
-        <section className="relative overflow-hidden rounded-2xl border bg-primary p-6 text-primary-foreground">
+        <section className="relative overflow-hidden rounded-2xl border bg-ink p-6 text-ink-foreground">
           <div className="pointer-events-none absolute -top-16 -right-16 size-56 rounded-full bg-ember/30 blur-3xl" />
-          <div className="relative flex items-center gap-2 font-mono text-[11px] tracking-wider text-primary-foreground/60 uppercase">
+          <div className="relative flex items-center gap-2 font-mono text-[11px] tracking-wider text-ink-foreground/60 uppercase">
             <PenLine className="size-3.5" /> Daily standup
           </div>
           <h2 className="relative mt-3 text-2xl font-bold">What did you build or learn today?</h2>
-          <p className="relative mt-2 max-w-md text-sm text-primary-foreground/70">
+          <p className="relative mt-2 max-w-md text-sm text-ink-foreground/70">
             Thirty seconds a day: what you did, your next step, and anything blocking you. Earns +10 pts and keeps your streak alive.
           </p>
-          <div className="relative mt-6 inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-primary-foreground/80">
+          <div className="relative mt-6 inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-ink-foreground/80">
             Standups open in Phase 3
           </div>
         </section>

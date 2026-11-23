@@ -39,7 +39,7 @@ export function HealthTable({ rows }: { rows: HealthRow[] }) {
               <tr key={r.id} className="transition-colors hover:bg-muted/40">
                 <td className="px-4 py-3">
                   <Link href={`/admin/communities/${r.slug}`} className="group flex items-center gap-3">
-                    <span className="grid size-8 place-items-center rounded-lg bg-primary font-display text-sm font-bold text-primary-foreground">
+                    <span className="grid size-8 place-items-center rounded-lg bg-ink font-display text-sm font-bold text-ink-foreground">
                       {r.name.slice(0, 1)}
                     </span>
                     <span className="min-w-0">

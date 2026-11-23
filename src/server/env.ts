@@ -5,7 +5,7 @@ const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   DATABASE_URL: z.string().url(),
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().min(1),
   NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
   /** Comma-separated emails promoted to SUPER_ADMIN on sign-in. Bootstraps the Global House. */
   SUPER_ADMIN_EMAILS: z
@@ -19,10 +19,21 @@ const schema = z.object({
     ),
 });
 
-const parsed = schema.safeParse(process.env);
-if (!parsed.success) {
-  const missing = parsed.error.issues.map((i) => `  • ${i.path.join(".")}: ${i.message}`).join("\n");
-  throw new Error(`Invalid environment. Copy .env.example to .env and fill it in:\n${missing}`);
+type Env = z.infer<typeof schema>;
+let cached: Env | undefined;
+
+function load(): Env {
+  if (cached) return cached;
+  const parsed = schema.safeParse(process.env);
+  if (!parsed.success) {
+    const missing = parsed.error.issues.map((i) => `  • ${i.path.join(".")}: ${i.message}`).join("\n");
+    throw new Error(`Invalid environment. Copy .env.example to .env and fill it in:\n${missing}`);
+  }
+  return (cached = parsed.data);
 }
 
-export const env = parsed.data;
+/**
+ * Validated environment. Checked on first read (not at import), so `next build` can run
+ * without runtime secrets such as DATABASE_URL — e.g. in CI or an Amplify build container.
+ */
+export const env = new Proxy({} as Env, { get: (_, key) => load()[key as keyof Env] });

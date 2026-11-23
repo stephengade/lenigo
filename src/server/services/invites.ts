@@ -131,7 +131,7 @@ export async function insertInvite(
  * "Magic Link" email template to use the token_hash link (see README → Supabase setup).
  */
 export async function sendInviteEmail(email: string, token: string): Promise<{ ok: boolean; error?: string }> {
-  const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
+  const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const { error } = await supabase.auth.signInWithOtp({

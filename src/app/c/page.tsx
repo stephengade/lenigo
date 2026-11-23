@@ -48,7 +48,7 @@ export default async function MyCommunitiesPage() {
                   href={`/c/${community.slug}`}
                   className="group flex items-center gap-4 p-5 transition-colors hover:bg-muted/50"
                 >
-                  <div className="grid size-11 place-items-center rounded-xl bg-primary font-display text-lg font-bold text-primary-foreground">
+                  <div className="grid size-11 place-items-center rounded-xl bg-ink font-display text-lg font-bold text-ink-foreground">
                     {community.name.slice(0, 1)}
                   </div>
                   <div className="min-w-0 flex-1">

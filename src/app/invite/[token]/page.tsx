@@ -40,13 +40,13 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
           </div>
         ) : (
           <div className="overflow-hidden rounded-3xl border bg-card shadow-sm">
-            <div className="relative bg-primary px-8 pt-8 pb-10 text-primary-foreground">
+            <div className="relative bg-ink px-8 pt-8 pb-10 text-ink-foreground">
               <div className="pointer-events-none absolute -right-10 -bottom-20 size-56 rounded-full bg-ember/30 blur-3xl" />
-              <p className="relative font-mono text-[11px] tracking-wider text-primary-foreground/60 uppercase">You&rsquo;re invited to</p>
+              <p className="relative font-mono text-[11px] tracking-wider text-ink-foreground/60 uppercase">You&rsquo;re invited to</p>
               <h1 className="relative mt-2 text-3xl leading-tight font-bold">
                 {invite.spaceName ?? invite.communityName}
               </h1>
-              {invite.spaceName ? <p className="relative mt-1 text-primary-foreground/70">in {invite.communityName}</p> : null}
+              {invite.spaceName ? <p className="relative mt-1 text-ink-foreground/70">in {invite.communityName}</p> : null}
             </div>
             <div className="space-y-5 p-8">
               <div className="flex items-center gap-2 text-sm">

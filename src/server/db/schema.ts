@@ -17,7 +17,9 @@ import { sql } from "drizzle-orm";
 import {
   bigserial,
   boolean,
+  check,
   date,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -27,6 +29,7 @@ import {
   smallint,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -39,20 +42,55 @@ export const spaceRole = pgEnum("space_role", ["LEAD", "MANAGER", "MENTOR", "MEM
 export const tenantStatus = pgEnum("tenant_status", ["ACTIVE", "SUSPENDED"]);
 /** OPEN: any community member can join the space as a MEMBER. INVITE: invite only. */
 export const joinPolicy = pgEnum("join_policy", ["OPEN", "INVITE"]);
+/**
+ * Internal ordering of the three steps in every track. What a space CALLS each step
+ * ("Beginner", "Foundations", "Junior"...) lives in levels.title, so spaces pick their own words.
+ */
 export const levelTier = pgEnum("level_tier", ["BEGINNER", "INTERMEDIATE", "ADVANCED"]);
-export const resourceType = pgEnum("resource_type", ["VIDEO", "ARTICLE", "SANDBOX"]);
+export const enrollmentStatus = pgEnum("enrollment_status", ["ACTIVE", "PAUSED", "COMPLETED"]);
+/**
+ * Placement test lifecycle. A passed test never moves a level by itself: it ends in
+ * RECOMMENDED, and a Mentor or Lead then records the promotion.
+ */
+export const placementStatus = pgEnum("placement_status", [
+  "QUIZ",
+  "TASK",
+  "AWAITING_REVIEW",
+  "RECOMMENDED",
+  "NOT_RECOMMENDED",
+  "EXPIRED",
+]);
+/**
+ * VIDEO: a handpicked lesson video (we host no video). Required to complete a module.
+ * ARTICLE: an external "learn more" link. Optional reading; never gates completion.
+ */
+export const resourceType = pgEnum("resource_type", ["VIDEO", "ARTICLE"]);
+/**
+ * Where a lesson video lives (lib/video.ts):
+ *  YOUTUBE       primary source; embedded in-app, watch time tracked via the player API
+ *  GOOGLE_DRIVE  embedded in-app via Drive's preview player; credited by time on page
+ *  EXTERNAL      any other https link; opens in a new tab, can't be tracked
+ */
+export const videoProvider = pgEnum("video_provider", ["YOUTUBE", "GOOGLE_DRIVE", "EXTERNAL"]);
 export const submissionStatus = pgEnum("submission_status", ["PENDING", "APPROVED", "NEEDS_REVISION"]);
 export const workshopType = pgEnum("workshop_type", ["ONLINE_CALL", "PHYSICAL"]);
+/**
+ * What earns points. Members may see these categories; the WEIGHTS live only in
+ * server/points/rules.ts (server-only) and are never sent to the client.
+ */
 export const pointsReason = pgEnum("points_reason", [
   "STANDUP",
-  "RESOURCE_COMPLETED",
-  "QUIZ_PASSED",
+  "VIDEO_COMPLETED",
+  "CHECKPOINT_PASSED",
   "PROJECT_APPROVED",
+  "REVIEW_SESSION_ATTENDED",
   "WORKSHOP_ATTENDED",
   "STREAK_BONUS",
   "ADJUSTMENT",
 ]);
-export const feedKind = pgEnum("feed_kind", ["STANDUP", "QUIZ_PASSED", "PROJECT_APPROVED", "STREAK_MILESTONE"]);
+export const feedKind = pgEnum("feed_kind", ["STANDUP", "CHECKPOINT_PASSED", "PROJECT_APPROVED", "LEVEL_PROMOTED", "STREAK_MILESTONE"]);
+/** STANDUP_REVIEW: a live session where members present progress and a mentor marks attendance. */
+export const workshopKind = pgEnum("workshop_kind", ["WORKSHOP", "STANDUP_REVIEW"]);
 
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 const updatedAt = () =>
@@ -153,6 +191,7 @@ export const spaceMembers = pgTable(
       .notNull()
       .references(() => communities.id, { onDelete: "cascade" }),
     role: spaceRole("role").notNull().default("MEMBER"),
+    /* A learner's level is per track: see track_enrollments. */
     joinedAt: createdAt(),
   },
   (t) => [
@@ -245,14 +284,28 @@ export const tracks = pgTable(
       .notNull()
       .references(() => communities.id, { onDelete: "cascade" }),
     slug: text("slug").notNull(),
+    /** Whatever the space calls it: "Frontend", "QA", "Data Analysis"... */
     title: text("title").notNull(),
     description: text("description"),
+    /**
+     * Optional entry requirement, e.g. Fullstack requires Frontend at INTERMEDIATE.
+     * Enforced by a DB trigger when an enrolment is created.
+     */
+    prerequisiteTrackId: uuid("prerequisite_track_id"),
+    prerequisiteTier: levelTier("prerequisite_tier"),
+    /** The practical part of the placement test (markdown brief). Null = no placement test offered. */
+    placementTaskMd: text("placement_task_md"),
     position: integer("position").notNull().default(0),
     isPublished: boolean("is_published").notNull().default(false),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [uniqueIndex("tracks_space_slug_key").on(t.spaceId, t.slug)],
+  (t) => [
+    uniqueIndex("tracks_space_slug_key").on(t.spaceId, t.slug),
+    foreignKey({ columns: [t.prerequisiteTrackId], foreignColumns: [t.id], name: "tracks_prerequisite_fk" }).onDelete("set null"),
+    check("tracks_prerequisite_pair", sql`(${t.prerequisiteTrackId} IS NULL) = (${t.prerequisiteTier} IS NULL)`),
+    check("tracks_prerequisite_not_self", sql`${t.prerequisiteTrackId} IS NULL OR ${t.prerequisiteTrackId} <> ${t.id}`),
+  ],
 ).enableRLS();
 
 export const levels = pgTable(
@@ -266,12 +319,43 @@ export const levels = pgTable(
       .notNull()
       .references(() => spaces.id, { onDelete: "cascade" }),
     tier: levelTier("tier").notNull(),
+    /** Display name chosen by the space ("Beginner", "Foundations"...). */
     title: text("title").notNull(),
     position: integer("position").notNull().default(0),
     isPublished: boolean("is_published").notNull().default(false),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("levels_track_tier_key").on(t.trackId, t.tier)],
+).enableRLS();
+
+/**
+ * A "pick one" inside a level, e.g. Frontend Intermediate → "React + Next.js" or "Vue + Nuxt".
+ * Modules with branchId null are the shared core everyone takes first.
+ */
+export const trackBranches = pgTable(
+  "track_branches",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    levelId: uuid("level_id")
+      .notNull()
+      .references(() => levels.id, { onDelete: "cascade" }),
+    trackId: uuid("track_id")
+      .notNull()
+      .references(() => tracks.id, { onDelete: "cascade" }),
+    spaceId: uuid("space_id")
+      .notNull()
+      .references(() => spaces.id, { onDelete: "cascade" }),
+    slug: text("slug").notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    position: integer("position").notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("track_branches_level_slug_key").on(t.levelId, t.slug),
+    // Target for composite FKs that keep a branch inside its own level.
+    unique("track_branches_id_level_key").on(t.id, t.levelId),
+  ],
 ).enableRLS();
 
 export const modules = pgTable(
@@ -286,14 +370,27 @@ export const modules = pgTable(
       .references(() => spaces.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
     summary: text("summary"),
-    actionItemMd: text("action_item_md"),
-    passThreshold: smallint("pass_threshold").notNull().default(80),
+    /**
+     * The module's capstone project brief. Required to publish: every module ends
+     * in a project the learner builds and a mentor reviews.
+     */
+    projectBriefMd: text("project_brief_md"),
+    /** Null = core module for everyone in the level; set = only for learners who chose that branch. */
+    branchId: uuid("branch_id"),
     position: integer("position").notNull().default(0),
     isPublished: boolean("is_published").notNull().default(false),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [index("modules_level_idx").on(t.levelId, t.position)],
+  (t) => [
+    index("modules_level_idx").on(t.levelId, t.position),
+    // A module's branch must belong to the module's own level.
+    foreignKey({
+      columns: [t.branchId, t.levelId],
+      foreignColumns: [trackBranches.id, trackBranches.levelId],
+      name: "modules_branch_same_level_fk",
+    }).onDelete("cascade"),
+  ],
 ).enableRLS();
 
 export const resources = pgTable(
@@ -308,13 +405,29 @@ export const resources = pgTable(
       .references(() => spaces.id, { onDelete: "cascade" }),
     type: resourceType("type").notNull(),
     title: text("title").notNull(),
+    /** Canonical https URL. For YouTube/Drive it is rebuilt from `providerId`, never stored as pasted. */
     url: text("url").notNull(),
+    /** Set for VIDEO only. */
+    provider: videoProvider("provider"),
+    /** YouTube video id or Google Drive file id, parsed and validated on the server (lib/video.ts). */
+    providerId: text("provider_id"),
+    /** Credit to the creator: YouTube channel, Drive owner or site name. */
+    sourceName: text("source_name"),
     estMinutes: integer("est_minutes"),
+    /** Video length, required for VIDEO so the server can cap credited watch time. */
+    durationSeconds: integer("duration_seconds"),
     position: integer("position").notNull().default(0),
     isPublished: boolean("is_published").notNull().default(true),
     createdAt: createdAt(),
   },
-  (t) => [index("resources_module_idx").on(t.moduleId, t.position)],
+  (t) => [
+    index("resources_module_idx").on(t.moduleId, t.position),
+    check("resources_video_has_source", sql`${t.type} <> 'VIDEO' OR (${t.provider} IS NOT NULL AND ${t.durationSeconds} > 0)`),
+    check("resources_youtube_id", sql`${t.provider} IS DISTINCT FROM 'YOUTUBE' OR ${t.providerId} ~ '^[A-Za-z0-9_-]{11}$'`),
+    check("resources_drive_id", sql`${t.provider} IS DISTINCT FROM 'GOOGLE_DRIVE' OR ${t.providerId} ~ '^[A-Za-z0-9_-]{20,}$'`),
+    check("resources_article_plain", sql`${t.type} <> 'ARTICLE' OR (${t.provider} IS NULL AND ${t.providerId} IS NULL)`),
+    check("resources_url_https", sql`${t.url} ~ '^https://'`),
+  ],
 ).enableRLS();
 
 export const resourceProgress = pgTable(
@@ -330,16 +443,50 @@ export const resourceProgress = pgTable(
       .notNull()
       .references(() => spaces.id, { onDelete: "cascade" }),
     watchedPct: smallint("watched_pct").notNull().default(0),
+    /**
+     * Seconds of playback the SERVER has credited. Each heartbeat can add at most the
+     * wall-clock time since the previous one (times a playback-rate cap), so seeking to
+     * the end or forging a "100%" request doesn't complete a video.
+     */
+    watchedSeconds: integer("watched_seconds").notNull().default(0),
+    lastPositionSeconds: integer("last_position_seconds").notNull().default(0),
+    lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     updatedAt: updatedAt(),
   },
   (t) => [primaryKey({ columns: [t.resourceId, t.userId] })],
 ).enableRLS();
 
+/**
+ * Checkpoint assessments inside a module. A checkpoint opens after the learner
+ * finishes `afterResourceId` (or straight away if null) and must be passed to go on.
+ */
+export const checkpoints = pgTable(
+  "checkpoints",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    moduleId: uuid("module_id")
+      .notNull()
+      .references(() => modules.id, { onDelete: "cascade" }),
+    spaceId: uuid("space_id")
+      .notNull()
+      .references(() => spaces.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    afterResourceId: uuid("after_resource_id").references(() => resources.id, { onDelete: "set null" }),
+    passThreshold: smallint("pass_threshold").notNull().default(80),
+    position: integer("position").notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [index("checkpoints_module_idx").on(t.moduleId, t.position)],
+).enableRLS();
+
 export const quizQuestions = pgTable(
   "quiz_questions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    checkpointId: uuid("checkpoint_id")
+      .notNull()
+      .references(() => checkpoints.id, { onDelete: "cascade" }),
     moduleId: uuid("module_id")
       .notNull()
       .references(() => modules.id, { onDelete: "cascade" }),
@@ -349,17 +496,21 @@ export const quizQuestions = pgTable(
     prompt: text("prompt").notNull(),
     codeSnippet: text("code_snippet"),
     options: jsonb("options").$type<string[]>().notNull(),
+    /** Never sent to members: grading happens on the server. */
     correctOptionIndex: smallint("correct_option_index").notNull(),
     explanation: text("explanation"),
     position: integer("position").notNull().default(0),
   },
-  (t) => [index("quiz_questions_module_idx").on(t.moduleId, t.position)],
+  (t) => [index("quiz_questions_checkpoint_idx").on(t.checkpointId, t.position)],
 ).enableRLS();
 
 export const quizAttempts = pgTable(
   "quiz_attempts",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    checkpointId: uuid("checkpoint_id")
+      .notNull()
+      .references(() => checkpoints.id, { onDelete: "cascade" }),
     moduleId: uuid("module_id")
       .notNull()
       .references(() => modules.id, { onDelete: "cascade" }),
@@ -374,7 +525,7 @@ export const quizAttempts = pgTable(
     answers: jsonb("answers").$type<number[]>().notNull(),
     createdAt: createdAt(),
   },
-  (t) => [index("quiz_attempts_user_module_idx").on(t.userId, t.moduleId, t.createdAt.desc())],
+  (t) => [index("quiz_attempts_user_checkpoint_idx").on(t.userId, t.checkpointId, t.createdAt.desc())],
 ).enableRLS();
 
 export const submissions = pgTable(
@@ -397,6 +548,8 @@ export const submissions = pgTable(
     liveUrl: text("live_url"),
     notes: text("notes"),
     status: submissionStatus("status").notNull().default("PENDING"),
+    /** Latest mentor score, 0–100 (full history in submission_reviews). */
+    score: smallint("score"),
     mentorFeedback: text("mentor_feedback"),
     reviewedById: uuid("reviewed_by_id").references(() => users.id, { onDelete: "set null" }),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
@@ -406,6 +559,253 @@ export const submissions = pgTable(
   (t) => [
     index("submissions_space_status_idx").on(t.spaceId, t.status, t.createdAt),
     index("submissions_user_module_idx").on(t.userId, t.moduleId),
+  ],
+).enableRLS();
+
+/**
+ * Append-only review history. A mentor (or above) approves or requests revisions and
+ * scores the project against the module brief. A DB trigger refuses self-review.
+ */
+export const submissionReviews = pgTable(
+  "submission_reviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    submissionId: uuid("submission_id")
+      .notNull()
+      .references(() => submissions.id, { onDelete: "cascade" }),
+    spaceId: uuid("space_id")
+      .notNull()
+      .references(() => spaces.id, { onDelete: "cascade" }),
+    reviewerId: uuid("reviewer_id").references(() => users.id, { onDelete: "set null" }),
+    decision: submissionStatus("decision").notNull(),
+    score: smallint("score"),
+    feedback: text("feedback").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("submission_reviews_submission_idx").on(t.submissionId, t.createdAt.desc()),
+    check("submission_reviews_score_range", sql`${t.score} IS NULL OR ${t.score} BETWEEN 0 AND 100`),
+    check("submission_reviews_decision", sql`${t.decision} <> 'PENDING'`),
+  ],
+).enableRLS();
+
+/* ───────────────────────────── Enrolment, intake & placement ───────────────────────────── */
+
+/**
+ * A learner's place in a track. The level lives HERE, per track: Intermediate in
+ * Frontend says nothing about Backend. DB rules (0001_integrity_rules.sql):
+ *  - a new enrolment starts at BEGINNER; the tier only moves through level_promotions
+ *  - the FIRST enrolment in a space is the learner's own pick; any further one needs
+ *    approvedById = a Mentor or Lead of the space (not the learner)
+ *  - the track's prerequisite (e.g. Frontend ≥ INTERMEDIATE for Fullstack) must be met
+ */
+export const trackEnrollments = pgTable(
+  "track_enrollments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    trackId: uuid("track_id")
+      .notNull()
+      .references(() => tracks.id, { onDelete: "cascade" }),
+    spaceId: uuid("space_id")
+      .notNull()
+      .references(() => spaces.id, { onDelete: "cascade" }),
+    communityId: uuid("community_id")
+      .notNull()
+      .references(() => communities.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tier: levelTier("tier").notNull().default("BEGINNER"),
+    status: enrollmentStatus("status").notNull().default("ACTIVE"),
+    approvedById: uuid("approved_by_id").references(() => users.id, { onDelete: "set null" }),
+    approvalNote: text("approval_note"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("track_enrollments_track_user_key").on(t.trackId, t.userId),
+    index("track_enrollments_member_idx").on(t.spaceId, t.userId),
+    unique("track_enrollments_id_track_key").on(t.id, t.trackId),
+    check("track_enrollments_not_self_approved", sql`${t.approvedById} IS NULL OR ${t.approvedById} <> ${t.userId}`),
+  ],
+).enableRLS();
+
+/**
+ * Which branch a learner picked in a level. Free to change until they have progress in
+ * the chosen branch; after that only a Mentor or Lead can switch it (DB trigger).
+ */
+export const enrollmentBranches = pgTable(
+  "enrollment_branches",
+  {
+    enrollmentId: uuid("enrollment_id")
+      .notNull()
+      .references(() => trackEnrollments.id, { onDelete: "cascade" }),
+    levelId: uuid("level_id")
+      .notNull()
+      .references(() => levels.id, { onDelete: "cascade" }),
+    branchId: uuid("branch_id").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    chosenById: uuid("chosen_by_id").references(() => users.id, { onDelete: "set null" }),
+    chosenAt: timestamp("chosen_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.enrollmentId, t.levelId] }),
+    foreignKey({
+      columns: [t.branchId, t.levelId],
+      foreignColumns: [trackBranches.id, trackBranches.levelId],
+      name: "enrollment_branches_same_level_fk",
+    }).onDelete("cascade"),
+  ],
+).enableRLS();
+
+/**
+ * Append-only history of level changes within a track (who promoted whom, from → to, why).
+ * Only a Mentor or Lead of the space may be promotedById (checked by trigger).
+ * placementAttemptId is set when the promotion follows a RECOMMENDED placement test;
+ * modules below that level are then "placed out" and earn no points.
+ */
+export const levelPromotions = pgTable(
+  "level_promotions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    enrollmentId: uuid("enrollment_id").notNull(),
+    trackId: uuid("track_id").notNull(),
+    spaceId: uuid("space_id")
+      .notNull()
+      .references(() => spaces.id, { onDelete: "cascade" }),
+    communityId: uuid("community_id")
+      .notNull()
+      .references(() => communities.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    fromLevel: levelTier("from_level").notNull(),
+    toLevel: levelTier("to_level").notNull(),
+    promotedById: uuid("promoted_by_id").references(() => users.id, { onDelete: "set null" }),
+    reason: text("reason").notNull(),
+    placementAttemptId: uuid("placement_attempt_id"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("level_promotions_member_idx").on(t.spaceId, t.userId, t.createdAt.desc()),
+    foreignKey({
+      columns: [t.enrollmentId, t.trackId],
+      foreignColumns: [trackEnrollments.id, trackEnrollments.trackId],
+      name: "level_promotions_enrollment_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.placementAttemptId],
+      foreignColumns: [placementAttempts.id],
+      name: "level_promotions_placement_fk",
+    }).onDelete("set null"),
+    check("level_promotions_not_self", sql`${t.promotedById} IS NULL OR ${t.promotedById} <> ${t.userId}`),
+    check("level_promotions_one_step", sql`(${t.fromLevel} = 'BEGINNER' AND ${t.toLevel} = 'INTERMEDIATE') OR (${t.fromLevel} = 'INTERMEDIATE' AND ${t.toLevel} = 'ADVANCED')`),
+  ],
+).enableRLS();
+
+/**
+ * Onboarding answers when a learner joins a space. Generic on purpose (every space
+ * asks the same four things); it picks the starting track, never the level.
+ * Mentors read it to get to know the learner.
+ */
+export const spaceIntakes = pgTable(
+  "space_intakes",
+  {
+    spaceId: uuid("space_id")
+      .notNull()
+      .references(() => spaces.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    communityId: uuid("community_id")
+      .notNull()
+      .references(() => communities.id, { onDelete: "cascade" }),
+    goalTrackId: uuid("goal_track_id").references(() => tracks.id, { onDelete: "set null" }),
+    /** "What have you built or studied so far?" */
+    experience: text("experience").notNull(),
+    /** GitHub, portfolio, past projects (https only, validated on the server). */
+    links: jsonb("links").$type<string[]>().notNull().default([]),
+    hoursPerWeek: smallint("hours_per_week").notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.spaceId, t.userId] }),
+    check("space_intakes_hours", sql`${t.hoursPerWeek} BETWEEN 1 AND 80`),
+  ],
+).enableRLS();
+
+/** Question bank for a track's placement quiz. Each attempt draws a random subset. */
+export const placementQuestions = pgTable(
+  "placement_questions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    trackId: uuid("track_id")
+      .notNull()
+      .references(() => tracks.id, { onDelete: "cascade" }),
+    spaceId: uuid("space_id")
+      .notNull()
+      .references(() => spaces.id, { onDelete: "cascade" }),
+    prompt: text("prompt").notNull(),
+    codeSnippet: text("code_snippet"),
+    options: jsonb("options").$type<string[]>().notNull(),
+    /** Never sent to members: grading happens on the server. */
+    correctOptionIndex: smallint("correct_option_index").notNull(),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: createdAt(),
+  },
+  (t) => [index("placement_questions_track_idx").on(t.trackId)],
+).enableRLS();
+
+/**
+ * One placement test: timed quiz → practical task → mentor review.
+ * DB rules: one attempt per track every 30 days; it can only aim at INTERMEDIATE
+ * (Advanced needs a mentor conversation); nobody reviews their own attempt.
+ * RECOMMENDED does not change the level: a Mentor or Lead records the promotion.
+ */
+export const placementAttempts = pgTable(
+  "placement_attempts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    trackId: uuid("track_id")
+      .notNull()
+      .references(() => tracks.id, { onDelete: "cascade" }),
+    spaceId: uuid("space_id")
+      .notNull()
+      .references(() => spaces.id, { onDelete: "cascade" }),
+    communityId: uuid("community_id")
+      .notNull()
+      .references(() => communities.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    targetTier: levelTier("target_tier").notNull().default("INTERMEDIATE"),
+    status: placementStatus("status").notNull().default("QUIZ"),
+    /** The questions this attempt was served, in order (drawn on the server). */
+    questionIds: jsonb("question_ids").$type<string[]>().notNull(),
+    answers: jsonb("answers").$type<number[]>(),
+    quizScorePct: smallint("quiz_score_pct"),
+    quizDeadlineAt: timestamp("quiz_deadline_at", { withTimezone: true }).notNull(),
+    taskRepoUrl: text("task_repo_url"),
+    taskLiveUrl: text("task_live_url"),
+    reviewerId: uuid("reviewer_id").references(() => users.id, { onDelete: "set null" }),
+    reviewFeedback: text("review_feedback"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("placement_attempts_member_idx").on(t.trackId, t.userId, t.startedAt.desc()),
+    index("placement_attempts_review_idx").on(t.spaceId, t.status),
+    check("placement_attempts_target", sql`${t.targetTier} = 'INTERMEDIATE'`),
+    check("placement_attempts_not_self_review", sql`${t.reviewerId} IS NULL OR ${t.reviewerId} <> ${t.userId}`),
+    check("placement_attempts_score_range", sql`${t.quizScorePct} IS NULL OR ${t.quizScorePct} BETWEEN 0 AND 100`),
+    check(
+      "placement_attempts_reviewed",
+      sql`${t.status} NOT IN ('RECOMMENDED', 'NOT_RECOMMENDED') OR (${t.reviewerId} IS NOT NULL AND ${t.reviewFeedback} IS NOT NULL)`,
+    ),
   ],
 ).enableRLS();
 
@@ -529,6 +929,34 @@ export const pointsLedger = pgTable(
   ],
 ).enableRLS();
 
+/**
+ * Leaderboards are published twice a day at fixed times for everyone (lib/leaderboard.ts),
+ * by lenigo_snapshot_leaderboards() run from pg_cron. Every learner-facing total and rank
+ * reads the latest snapshot, never the live ledger, so single actions can't be priced.
+ */
+export const leaderboardSnapshots = pgTable(
+  "leaderboard_snapshots",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    spaceId: uuid("space_id")
+      .notNull()
+      .references(() => spaces.id, { onDelete: "cascade" }),
+    communityId: uuid("community_id")
+      .notNull()
+      .references(() => communities.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    points: integer("points").notNull(),
+    rank: integer("rank").notNull(),
+    takenAt: timestamp("taken_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("leaderboard_snapshots_key").on(t.spaceId, t.userId, t.takenAt),
+    index("leaderboard_snapshots_board_idx").on(t.spaceId, t.takenAt.desc(), t.rank),
+  ],
+).enableRLS();
+
 /* ───────────────────────────── Workshops (Phase 4) ───────────────────────────── */
 
 export const workshops = pgTable(
@@ -539,6 +967,7 @@ export const workshops = pgTable(
       .notNull()
       .references(() => spaces.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
+    kind: workshopKind("kind").notNull().default("WORKSHOP"),
     type: workshopType("type").notNull(),
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
     endsAt: timestamp("ends_at", { withTimezone: true }),
@@ -561,8 +990,10 @@ export const workshopRsvps = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     submissionId: uuid("submission_id").references(() => submissions.id, { onDelete: "set null" }),
+    /** Marked by a mentor or above, never by the attendee. */
     attended: boolean("attended").notNull().default(false),
     attendedAt: timestamp("attended_at", { withTimezone: true }),
+    markedById: uuid("marked_by_id").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.workshopId, t.userId] })],
@@ -577,3 +1008,8 @@ export type Invite = typeof invites.$inferSelect;
 export type GlobalRole = (typeof globalRole.enumValues)[number];
 export type CommunityRole = (typeof communityRole.enumValues)[number];
 export type SpaceRole = (typeof spaceRole.enumValues)[number];
+export type LevelTier = (typeof levelTier.enumValues)[number];
+export type Track = typeof tracks.$inferSelect;
+export type TrackEnrollment = typeof trackEnrollments.$inferSelect;
+export type PlacementStatus = (typeof placementStatus.enumValues)[number];
+export type PointsReason = (typeof pointsReason.enumValues)[number];

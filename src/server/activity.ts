@@ -23,7 +23,9 @@ export const ACTION_TYPES = [
   "SUBMISSION_CREATED",
   "SUBMISSION_APPROVED",
   "SUBMISSION_NEEDS_REVISION",
-  "QUIZ_PASSED",
+  "CHECKPOINT_PASSED",
+  "LEVEL_PROMOTED",
+  "ATTENDANCE_MARKED",
   "CHECK_IN",
 ] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];

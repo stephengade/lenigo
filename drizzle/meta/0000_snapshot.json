@@ -1,5 +1,5 @@
 {
-  "id": "8959678b-0f39-4734-abfb-0f51bc6197f7",
+  "id": "736434ee-5bf3-4f15-87ea-d1d674df1561",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -178,6 +178,133 @@
           "tableTo": "spaces",
           "columnsFrom": [
             "space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.checkpoints": {
+      "name": "checkpoints",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "module_id": {
+          "name": "module_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "space_id": {
+          "name": "space_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "after_resource_id": {
+          "name": "after_resource_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pass_threshold": {
+          "name": "pass_threshold",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 80
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "checkpoints_module_idx": {
+          "name": "checkpoints_module_idx",
+          "columns": [
+            {
+              "expression": "module_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "position",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "checkpoints_module_id_modules_id_fk": {
+          "name": "checkpoints_module_id_modules_id_fk",
+          "tableFrom": "checkpoints",
+          "tableTo": "modules",
+          "columnsFrom": [
+            "module_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "checkpoints_space_id_spaces_id_fk": {
+          "name": "checkpoints_space_id_spaces_id_fk",
+          "tableFrom": "checkpoints",
+          "tableTo": "spaces",
+          "columnsFrom": [
+            "space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "checkpoints_after_resource_id_resources_id_fk": {
+          "name": "checkpoints_after_resource_id_resources_id_fk",
+          "tableFrom": "checkpoints",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "after_resource_id"
           ],
           "columnsTo": [
             "id"
@@ -390,6 +517,132 @@
           "columns": [
             "community_id",
             "user_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.enrollment_branches": {
+      "name": "enrollment_branches",
+      "schema": "",
+      "columns": {
+        "enrollment_id": {
+          "name": "enrollment_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "level_id": {
+          "name": "level_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "branch_id": {
+          "name": "branch_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chosen_by_id": {
+          "name": "chosen_by_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "chosen_at": {
+          "name": "chosen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "enrollment_branches_enrollment_id_track_enrollments_id_fk": {
+          "name": "enrollment_branches_enrollment_id_track_enrollments_id_fk",
+          "tableFrom": "enrollment_branches",
+          "tableTo": "track_enrollments",
+          "columnsFrom": [
+            "enrollment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "enrollment_branches_level_id_levels_id_fk": {
+          "name": "enrollment_branches_level_id_levels_id_fk",
+          "tableFrom": "enrollment_branches",
+          "tableTo": "levels",
+          "columnsFrom": [
+            "level_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "enrollment_branches_user_id_users_id_fk": {
+          "name": "enrollment_branches_user_id_users_id_fk",
+          "tableFrom": "enrollment_branches",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "enrollment_branches_chosen_by_id_users_id_fk": {
+          "name": "enrollment_branches_chosen_by_id_users_id_fk",
+          "tableFrom": "enrollment_branches",
+          "tableTo": "users",
+          "columnsFrom": [
+            "chosen_by_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "enrollment_branches_same_level_fk": {
+          "name": "enrollment_branches_same_level_fk",
+          "tableFrom": "enrollment_branches",
+          "tableTo": "track_branches",
+          "columnsFrom": [
+            "branch_id",
+            "level_id"
+          ],
+          "columnsTo": [
+            "id",
+            "level_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "enrollment_branches_enrollment_id_level_id_pk": {
+          "name": "enrollment_branches_enrollment_id_level_id_pk",
+          "columns": [
+            "enrollment_id",
+            "level_id"
           ]
         }
       },
@@ -923,6 +1176,363 @@
       "checkConstraints": {},
       "isRLSEnabled": true
     },
+    "public.leaderboard_snapshots": {
+      "name": "leaderboard_snapshots",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "space_id": {
+          "name": "space_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "community_id": {
+          "name": "community_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "points": {
+          "name": "points",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rank": {
+          "name": "rank",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "taken_at": {
+          "name": "taken_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "leaderboard_snapshots_key": {
+          "name": "leaderboard_snapshots_key",
+          "columns": [
+            {
+              "expression": "space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "taken_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "leaderboard_snapshots_board_idx": {
+          "name": "leaderboard_snapshots_board_idx",
+          "columns": [
+            {
+              "expression": "space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "taken_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "rank",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "leaderboard_snapshots_space_id_spaces_id_fk": {
+          "name": "leaderboard_snapshots_space_id_spaces_id_fk",
+          "tableFrom": "leaderboard_snapshots",
+          "tableTo": "spaces",
+          "columnsFrom": [
+            "space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "leaderboard_snapshots_community_id_communities_id_fk": {
+          "name": "leaderboard_snapshots_community_id_communities_id_fk",
+          "tableFrom": "leaderboard_snapshots",
+          "tableTo": "communities",
+          "columnsFrom": [
+            "community_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "leaderboard_snapshots_user_id_users_id_fk": {
+          "name": "leaderboard_snapshots_user_id_users_id_fk",
+          "tableFrom": "leaderboard_snapshots",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.level_promotions": {
+      "name": "level_promotions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "enrollment_id": {
+          "name": "enrollment_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "track_id": {
+          "name": "track_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "space_id": {
+          "name": "space_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "community_id": {
+          "name": "community_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "from_level": {
+          "name": "from_level",
+          "type": "level_tier",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "to_level": {
+          "name": "to_level",
+          "type": "level_tier",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "promoted_by_id": {
+          "name": "promoted_by_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "placement_attempt_id": {
+          "name": "placement_attempt_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "level_promotions_member_idx": {
+          "name": "level_promotions_member_idx",
+          "columns": [
+            {
+              "expression": "space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "level_promotions_space_id_spaces_id_fk": {
+          "name": "level_promotions_space_id_spaces_id_fk",
+          "tableFrom": "level_promotions",
+          "tableTo": "spaces",
+          "columnsFrom": [
+            "space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "level_promotions_community_id_communities_id_fk": {
+          "name": "level_promotions_community_id_communities_id_fk",
+          "tableFrom": "level_promotions",
+          "tableTo": "communities",
+          "columnsFrom": [
+            "community_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "level_promotions_user_id_users_id_fk": {
+          "name": "level_promotions_user_id_users_id_fk",
+          "tableFrom": "level_promotions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "level_promotions_promoted_by_id_users_id_fk": {
+          "name": "level_promotions_promoted_by_id_users_id_fk",
+          "tableFrom": "level_promotions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "promoted_by_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "level_promotions_enrollment_fk": {
+          "name": "level_promotions_enrollment_fk",
+          "tableFrom": "level_promotions",
+          "tableTo": "track_enrollments",
+          "columnsFrom": [
+            "enrollment_id",
+            "track_id"
+          ],
+          "columnsTo": [
+            "id",
+            "track_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "level_promotions_placement_fk": {
+          "name": "level_promotions_placement_fk",
+          "tableFrom": "level_promotions",
+          "tableTo": "placement_attempts",
+          "columnsFrom": [
+            "placement_attempt_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "level_promotions_not_self": {
+          "name": "level_promotions_not_self",
+          "value": "\"level_promotions\".\"promoted_by_id\" IS NULL OR \"level_promotions\".\"promoted_by_id\" <> \"level_promotions\".\"user_id\""
+        },
+        "level_promotions_one_step": {
+          "name": "level_promotions_one_step",
+          "value": "(\"level_promotions\".\"from_level\" = 'BEGINNER' AND \"level_promotions\".\"to_level\" = 'INTERMEDIATE') OR (\"level_promotions\".\"from_level\" = 'INTERMEDIATE' AND \"level_promotions\".\"to_level\" = 'ADVANCED')"
+        }
+      },
+      "isRLSEnabled": true
+    },
     "public.levels": {
       "name": "levels",
       "schema": "",
@@ -1073,18 +1683,17 @@
           "primaryKey": false,
           "notNull": false
         },
-        "action_item_md": {
-          "name": "action_item_md",
+        "project_brief_md": {
+          "name": "project_brief_md",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "pass_threshold": {
-          "name": "pass_threshold",
-          "type": "smallint",
+        "branch_id": {
+          "name": "branch_id",
+          "type": "uuid",
           "primaryKey": false,
-          "notNull": true,
-          "default": 80
+          "notNull": false
         },
         "position": {
           "name": "position",
@@ -1155,6 +1764,393 @@
         "modules_space_id_spaces_id_fk": {
           "name": "modules_space_id_spaces_id_fk",
           "tableFrom": "modules",
+          "tableTo": "spaces",
+          "columnsFrom": [
+            "space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "modules_branch_same_level_fk": {
+          "name": "modules_branch_same_level_fk",
+          "tableFrom": "modules",
+          "tableTo": "track_branches",
+          "columnsFrom": [
+            "branch_id",
+            "level_id"
+          ],
+          "columnsTo": [
+            "id",
+            "level_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.placement_attempts": {
+      "name": "placement_attempts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "track_id": {
+          "name": "track_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "space_id": {
+          "name": "space_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "community_id": {
+          "name": "community_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_tier": {
+          "name": "target_tier",
+          "type": "level_tier",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'INTERMEDIATE'"
+        },
+        "status": {
+          "name": "status",
+          "type": "placement_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'QUIZ'"
+        },
+        "question_ids": {
+          "name": "question_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "answers": {
+          "name": "answers",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quiz_score_pct": {
+          "name": "quiz_score_pct",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quiz_deadline_at": {
+          "name": "quiz_deadline_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "task_repo_url": {
+          "name": "task_repo_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "task_live_url": {
+          "name": "task_live_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reviewer_id": {
+          "name": "reviewer_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_feedback": {
+          "name": "review_feedback",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "submitted_at": {
+          "name": "submitted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reviewed_at": {
+          "name": "reviewed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "placement_attempts_member_idx": {
+          "name": "placement_attempts_member_idx",
+          "columns": [
+            {
+              "expression": "track_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "started_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "placement_attempts_review_idx": {
+          "name": "placement_attempts_review_idx",
+          "columns": [
+            {
+              "expression": "space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "placement_attempts_track_id_tracks_id_fk": {
+          "name": "placement_attempts_track_id_tracks_id_fk",
+          "tableFrom": "placement_attempts",
+          "tableTo": "tracks",
+          "columnsFrom": [
+            "track_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "placement_attempts_space_id_spaces_id_fk": {
+          "name": "placement_attempts_space_id_spaces_id_fk",
+          "tableFrom": "placement_attempts",
+          "tableTo": "spaces",
+          "columnsFrom": [
+            "space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "placement_attempts_community_id_communities_id_fk": {
+          "name": "placement_attempts_community_id_communities_id_fk",
+          "tableFrom": "placement_attempts",
+          "tableTo": "communities",
+          "columnsFrom": [
+            "community_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "placement_attempts_user_id_users_id_fk": {
+          "name": "placement_attempts_user_id_users_id_fk",
+          "tableFrom": "placement_attempts",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "placement_attempts_reviewer_id_users_id_fk": {
+          "name": "placement_attempts_reviewer_id_users_id_fk",
+          "tableFrom": "placement_attempts",
+          "tableTo": "users",
+          "columnsFrom": [
+            "reviewer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "placement_attempts_target": {
+          "name": "placement_attempts_target",
+          "value": "\"placement_attempts\".\"target_tier\" = 'INTERMEDIATE'"
+        },
+        "placement_attempts_not_self_review": {
+          "name": "placement_attempts_not_self_review",
+          "value": "\"placement_attempts\".\"reviewer_id\" IS NULL OR \"placement_attempts\".\"reviewer_id\" <> \"placement_attempts\".\"user_id\""
+        },
+        "placement_attempts_score_range": {
+          "name": "placement_attempts_score_range",
+          "value": "\"placement_attempts\".\"quiz_score_pct\" IS NULL OR \"placement_attempts\".\"quiz_score_pct\" BETWEEN 0 AND 100"
+        },
+        "placement_attempts_reviewed": {
+          "name": "placement_attempts_reviewed",
+          "value": "\"placement_attempts\".\"status\" NOT IN ('RECOMMENDED', 'NOT_RECOMMENDED') OR (\"placement_attempts\".\"reviewer_id\" IS NOT NULL AND \"placement_attempts\".\"review_feedback\" IS NOT NULL)"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.placement_questions": {
+      "name": "placement_questions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "track_id": {
+          "name": "track_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "space_id": {
+          "name": "space_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prompt": {
+          "name": "prompt",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code_snippet": {
+          "name": "code_snippet",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "options": {
+          "name": "options",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "correct_option_index": {
+          "name": "correct_option_index",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "placement_questions_track_idx": {
+          "name": "placement_questions_track_idx",
+          "columns": [
+            {
+              "expression": "track_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "placement_questions_track_id_tracks_id_fk": {
+          "name": "placement_questions_track_id_tracks_id_fk",
+          "tableFrom": "placement_questions",
+          "tableTo": "tracks",
+          "columnsFrom": [
+            "track_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "placement_questions_space_id_spaces_id_fk": {
+          "name": "placement_questions_space_id_spaces_id_fk",
+          "tableFrom": "placement_questions",
           "tableTo": "spaces",
           "columnsFrom": [
             "space_id"
@@ -1381,6 +2377,12 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
+        "checkpoint_id": {
+          "name": "checkpoint_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
         "module_id": {
           "name": "module_id",
           "type": "uuid",
@@ -1426,8 +2428,8 @@
         }
       },
       "indexes": {
-        "quiz_attempts_user_module_idx": {
-          "name": "quiz_attempts_user_module_idx",
+        "quiz_attempts_user_checkpoint_idx": {
+          "name": "quiz_attempts_user_checkpoint_idx",
           "columns": [
             {
               "expression": "user_id",
@@ -1436,7 +2438,7 @@
               "nulls": "last"
             },
             {
-              "expression": "module_id",
+              "expression": "checkpoint_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1455,6 +2457,19 @@
         }
       },
       "foreignKeys": {
+        "quiz_attempts_checkpoint_id_checkpoints_id_fk": {
+          "name": "quiz_attempts_checkpoint_id_checkpoints_id_fk",
+          "tableFrom": "quiz_attempts",
+          "tableTo": "checkpoints",
+          "columnsFrom": [
+            "checkpoint_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
         "quiz_attempts_module_id_modules_id_fk": {
           "name": "quiz_attempts_module_id_modules_id_fk",
           "tableFrom": "quiz_attempts",
@@ -1512,6 +2527,12 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
+        "checkpoint_id": {
+          "name": "checkpoint_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
         "module_id": {
           "name": "module_id",
           "type": "uuid",
@@ -1563,11 +2584,11 @@
         }
       },
       "indexes": {
-        "quiz_questions_module_idx": {
-          "name": "quiz_questions_module_idx",
+        "quiz_questions_checkpoint_idx": {
+          "name": "quiz_questions_checkpoint_idx",
           "columns": [
             {
-              "expression": "module_id",
+              "expression": "checkpoint_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1586,6 +2607,19 @@
         }
       },
       "foreignKeys": {
+        "quiz_questions_checkpoint_id_checkpoints_id_fk": {
+          "name": "quiz_questions_checkpoint_id_checkpoints_id_fk",
+          "tableFrom": "quiz_questions",
+          "tableTo": "checkpoints",
+          "columnsFrom": [
+            "checkpoint_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
         "quiz_questions_module_id_modules_id_fk": {
           "name": "quiz_questions_module_id_modules_id_fk",
           "tableFrom": "quiz_questions",
@@ -1647,6 +2681,26 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "watched_seconds": {
+          "name": "watched_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "last_position_seconds": {
+          "name": "last_position_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "last_heartbeat_at": {
+          "name": "last_heartbeat_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "completed_at": {
           "name": "completed_at",
@@ -1760,8 +2814,33 @@
           "primaryKey": false,
           "notNull": true
         },
+        "provider": {
+          "name": "provider",
+          "type": "video_provider",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provider_id": {
+          "name": "provider_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_name": {
+          "name": "source_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "est_minutes": {
           "name": "est_minutes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "duration_seconds": {
+          "name": "duration_seconds",
           "type": "integer",
           "primaryKey": false,
           "notNull": false
@@ -1842,7 +2921,164 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "resources_video_has_source": {
+          "name": "resources_video_has_source",
+          "value": "\"resources\".\"type\" <> 'VIDEO' OR (\"resources\".\"provider\" IS NOT NULL AND \"resources\".\"duration_seconds\" > 0)"
+        },
+        "resources_youtube_id": {
+          "name": "resources_youtube_id",
+          "value": "\"resources\".\"provider\" IS DISTINCT FROM 'YOUTUBE' OR \"resources\".\"provider_id\" ~ '^[A-Za-z0-9_-]{11}$'"
+        },
+        "resources_drive_id": {
+          "name": "resources_drive_id",
+          "value": "\"resources\".\"provider\" IS DISTINCT FROM 'GOOGLE_DRIVE' OR \"resources\".\"provider_id\" ~ '^[A-Za-z0-9_-]{20,}$'"
+        },
+        "resources_article_plain": {
+          "name": "resources_article_plain",
+          "value": "\"resources\".\"type\" <> 'ARTICLE' OR (\"resources\".\"provider\" IS NULL AND \"resources\".\"provider_id\" IS NULL)"
+        },
+        "resources_url_https": {
+          "name": "resources_url_https",
+          "value": "\"resources\".\"url\" ~ '^https://'"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.space_intakes": {
+      "name": "space_intakes",
+      "schema": "",
+      "columns": {
+        "space_id": {
+          "name": "space_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "community_id": {
+          "name": "community_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "goal_track_id": {
+          "name": "goal_track_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "experience": {
+          "name": "experience",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "links": {
+          "name": "links",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "hours_per_week": {
+          "name": "hours_per_week",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "space_intakes_space_id_spaces_id_fk": {
+          "name": "space_intakes_space_id_spaces_id_fk",
+          "tableFrom": "space_intakes",
+          "tableTo": "spaces",
+          "columnsFrom": [
+            "space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "space_intakes_user_id_users_id_fk": {
+          "name": "space_intakes_user_id_users_id_fk",
+          "tableFrom": "space_intakes",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "space_intakes_community_id_communities_id_fk": {
+          "name": "space_intakes_community_id_communities_id_fk",
+          "tableFrom": "space_intakes",
+          "tableTo": "communities",
+          "columnsFrom": [
+            "community_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "space_intakes_goal_track_id_tracks_id_fk": {
+          "name": "space_intakes_goal_track_id_tracks_id_fk",
+          "tableFrom": "space_intakes",
+          "tableTo": "tracks",
+          "columnsFrom": [
+            "goal_track_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "space_intakes_space_id_user_id_pk": {
+          "name": "space_intakes_space_id_user_id_pk",
+          "columns": [
+            "space_id",
+            "user_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "space_intakes_hours": {
+          "name": "space_intakes_hours",
+          "value": "\"space_intakes\".\"hours_per_week\" BETWEEN 1 AND 80"
+        }
+      },
       "isRLSEnabled": true
     },
     "public.space_members": {
@@ -2315,6 +3551,141 @@
       "checkConstraints": {},
       "isRLSEnabled": true
     },
+    "public.submission_reviews": {
+      "name": "submission_reviews",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "submission_id": {
+          "name": "submission_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "space_id": {
+          "name": "space_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reviewer_id": {
+          "name": "reviewer_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decision": {
+          "name": "decision",
+          "type": "submission_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "score": {
+          "name": "score",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "feedback": {
+          "name": "feedback",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "submission_reviews_submission_idx": {
+          "name": "submission_reviews_submission_idx",
+          "columns": [
+            {
+              "expression": "submission_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "submission_reviews_submission_id_submissions_id_fk": {
+          "name": "submission_reviews_submission_id_submissions_id_fk",
+          "tableFrom": "submission_reviews",
+          "tableTo": "submissions",
+          "columnsFrom": [
+            "submission_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "submission_reviews_space_id_spaces_id_fk": {
+          "name": "submission_reviews_space_id_spaces_id_fk",
+          "tableFrom": "submission_reviews",
+          "tableTo": "spaces",
+          "columnsFrom": [
+            "space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "submission_reviews_reviewer_id_users_id_fk": {
+          "name": "submission_reviews_reviewer_id_users_id_fk",
+          "tableFrom": "submission_reviews",
+          "tableTo": "users",
+          "columnsFrom": [
+            "reviewer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "submission_reviews_score_range": {
+          "name": "submission_reviews_score_range",
+          "value": "\"submission_reviews\".\"score\" IS NULL OR \"submission_reviews\".\"score\" BETWEEN 0 AND 100"
+        },
+        "submission_reviews_decision": {
+          "name": "submission_reviews_decision",
+          "value": "\"submission_reviews\".\"decision\" <> 'PENDING'"
+        }
+      },
+      "isRLSEnabled": true
+    },
     "public.submissions": {
       "name": "submissions",
       "schema": "",
@@ -2375,6 +3746,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'PENDING'"
+        },
+        "score": {
+          "name": "score",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
         },
         "mentor_feedback": {
           "name": "mentor_feedback",
@@ -2532,6 +3909,356 @@
       "checkConstraints": {},
       "isRLSEnabled": true
     },
+    "public.track_branches": {
+      "name": "track_branches",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "level_id": {
+          "name": "level_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "track_id": {
+          "name": "track_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "space_id": {
+          "name": "space_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "track_branches_level_slug_key": {
+          "name": "track_branches_level_slug_key",
+          "columns": [
+            {
+              "expression": "level_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "slug",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "track_branches_level_id_levels_id_fk": {
+          "name": "track_branches_level_id_levels_id_fk",
+          "tableFrom": "track_branches",
+          "tableTo": "levels",
+          "columnsFrom": [
+            "level_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "track_branches_track_id_tracks_id_fk": {
+          "name": "track_branches_track_id_tracks_id_fk",
+          "tableFrom": "track_branches",
+          "tableTo": "tracks",
+          "columnsFrom": [
+            "track_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "track_branches_space_id_spaces_id_fk": {
+          "name": "track_branches_space_id_spaces_id_fk",
+          "tableFrom": "track_branches",
+          "tableTo": "spaces",
+          "columnsFrom": [
+            "space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "track_branches_id_level_key": {
+          "name": "track_branches_id_level_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "level_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.track_enrollments": {
+      "name": "track_enrollments",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "track_id": {
+          "name": "track_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "space_id": {
+          "name": "space_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "community_id": {
+          "name": "community_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tier": {
+          "name": "tier",
+          "type": "level_tier",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'BEGINNER'"
+        },
+        "status": {
+          "name": "status",
+          "type": "enrollment_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ACTIVE'"
+        },
+        "approved_by_id": {
+          "name": "approved_by_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "approval_note": {
+          "name": "approval_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "track_enrollments_track_user_key": {
+          "name": "track_enrollments_track_user_key",
+          "columns": [
+            {
+              "expression": "track_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "track_enrollments_member_idx": {
+          "name": "track_enrollments_member_idx",
+          "columns": [
+            {
+              "expression": "space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "track_enrollments_track_id_tracks_id_fk": {
+          "name": "track_enrollments_track_id_tracks_id_fk",
+          "tableFrom": "track_enrollments",
+          "tableTo": "tracks",
+          "columnsFrom": [
+            "track_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "track_enrollments_space_id_spaces_id_fk": {
+          "name": "track_enrollments_space_id_spaces_id_fk",
+          "tableFrom": "track_enrollments",
+          "tableTo": "spaces",
+          "columnsFrom": [
+            "space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "track_enrollments_community_id_communities_id_fk": {
+          "name": "track_enrollments_community_id_communities_id_fk",
+          "tableFrom": "track_enrollments",
+          "tableTo": "communities",
+          "columnsFrom": [
+            "community_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "track_enrollments_user_id_users_id_fk": {
+          "name": "track_enrollments_user_id_users_id_fk",
+          "tableFrom": "track_enrollments",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "track_enrollments_approved_by_id_users_id_fk": {
+          "name": "track_enrollments_approved_by_id_users_id_fk",
+          "tableFrom": "track_enrollments",
+          "tableTo": "users",
+          "columnsFrom": [
+            "approved_by_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "track_enrollments_id_track_key": {
+          "name": "track_enrollments_id_track_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "track_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "track_enrollments_not_self_approved": {
+          "name": "track_enrollments_not_self_approved",
+          "value": "\"track_enrollments\".\"approved_by_id\" IS NULL OR \"track_enrollments\".\"approved_by_id\" <> \"track_enrollments\".\"user_id\""
+        }
+      },
+      "isRLSEnabled": true
+    },
     "public.tracks": {
       "name": "tracks",
       "schema": "",
@@ -2569,6 +4296,25 @@
         },
         "description": {
           "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "prerequisite_track_id": {
+          "name": "prerequisite_track_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "prerequisite_tier": {
+          "name": "prerequisite_tier",
+          "type": "level_tier",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "placement_task_md": {
+          "name": "placement_task_md",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -2651,12 +4397,34 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
+        },
+        "tracks_prerequisite_fk": {
+          "name": "tracks_prerequisite_fk",
+          "tableFrom": "tracks",
+          "tableTo": "tracks",
+          "columnsFrom": [
+            "prerequisite_track_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "tracks_prerequisite_pair": {
+          "name": "tracks_prerequisite_pair",
+          "value": "(\"tracks\".\"prerequisite_track_id\" IS NULL) = (\"tracks\".\"prerequisite_tier\" IS NULL)"
+        },
+        "tracks_prerequisite_not_self": {
+          "name": "tracks_prerequisite_not_self",
+          "value": "\"tracks\".\"prerequisite_track_id\" IS NULL OR \"tracks\".\"prerequisite_track_id\" <> \"tracks\".\"id\""
+        }
+      },
       "isRLSEnabled": true
     },
     "public.users": {
@@ -2816,6 +4584,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "marked_by_id": {
+          "name": "marked_by_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -2864,6 +4638,19 @@
           ],
           "onDelete": "set null",
           "onUpdate": "no action"
+        },
+        "workshop_rsvps_marked_by_id_users_id_fk": {
+          "name": "workshop_rsvps_marked_by_id_users_id_fk",
+          "tableFrom": "workshop_rsvps",
+          "tableTo": "users",
+          "columnsFrom": [
+            "marked_by_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -2902,6 +4689,14 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "workshop_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'WORKSHOP'"
         },
         "type": {
           "name": "type",
@@ -3022,13 +4817,23 @@
         "MEMBER"
       ]
     },
+    "public.enrollment_status": {
+      "name": "enrollment_status",
+      "schema": "public",
+      "values": [
+        "ACTIVE",
+        "PAUSED",
+        "COMPLETED"
+      ]
+    },
     "public.feed_kind": {
       "name": "feed_kind",
       "schema": "public",
       "values": [
         "STANDUP",
-        "QUIZ_PASSED",
+        "CHECKPOINT_PASSED",
         "PROJECT_APPROVED",
+        "LEVEL_PROMOTED",
         "STREAK_MILESTONE"
       ]
     },
@@ -3059,14 +4864,27 @@
         "ADVANCED"
       ]
     },
+    "public.placement_status": {
+      "name": "placement_status",
+      "schema": "public",
+      "values": [
+        "QUIZ",
+        "TASK",
+        "AWAITING_REVIEW",
+        "RECOMMENDED",
+        "NOT_RECOMMENDED",
+        "EXPIRED"
+      ]
+    },
     "public.points_reason": {
       "name": "points_reason",
       "schema": "public",
       "values": [
         "STANDUP",
-        "RESOURCE_COMPLETED",
-        "QUIZ_PASSED",
+        "VIDEO_COMPLETED",
+        "CHECKPOINT_PASSED",
         "PROJECT_APPROVED",
+        "REVIEW_SESSION_ATTENDED",
         "WORKSHOP_ATTENDED",
         "STREAK_BONUS",
         "ADJUSTMENT"
@@ -3077,8 +4895,7 @@
       "schema": "public",
       "values": [
         "VIDEO",
-        "ARTICLE",
-        "SANDBOX"
+        "ARTICLE"
       ]
     },
     "public.space_role": {
@@ -3106,6 +4923,23 @@
       "values": [
         "ACTIVE",
         "SUSPENDED"
+      ]
+    },
+    "public.video_provider": {
+      "name": "video_provider",
+      "schema": "public",
+      "values": [
+        "YOUTUBE",
+        "GOOGLE_DRIVE",
+        "EXTERNAL"
+      ]
+    },
+    "public.workshop_kind": {
+      "name": "workshop_kind",
+      "schema": "public",
+      "values": [
+        "WORKSHOP",
+        "STANDUP_REVIEW"
       ]
     },
     "public.workshop_type": {

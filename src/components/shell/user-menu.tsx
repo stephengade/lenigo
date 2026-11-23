@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { Building2, LayoutGrid, LogOut, Moon, Sun } from "lucide-react";
 import {
@@ -26,6 +27,7 @@ export type MenuUser = {
 
 export function UserMenu({ user, showHouse }: { user: MenuUser; showHouse: boolean }) {
   const { resolvedTheme, setTheme } = useTheme();
+  const router = useRouter();
 
   return (
     <DropdownMenu>
@@ -60,7 +62,8 @@ export function UserMenu({ user, showHouse }: { user: MenuUser; showHouse: boole
           variant="destructive"
           onClick={async () => {
             await fetch("/auth/signout", { method: "POST" });
-            window.location.href = "/";
+            router.replace("/");
+            router.refresh();
           }}
         >
           <LogOut /> Sign out

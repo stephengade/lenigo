@@ -15,11 +15,11 @@ export type ActivityItem = {
 
 const TONE: Record<string, string> = {
   LOGIN: "bg-muted text-muted-foreground",
-  PROVISION_COMMUNITY: "bg-primary text-primary-foreground",
+  PROVISION_COMMUNITY: "bg-ink text-ink-foreground",
   DELETE_COMMUNITY: "bg-destructive/10 text-destructive",
   SUSPEND_COMMUNITY: "bg-destructive/10 text-destructive",
   SUBMISSION_APPROVED: "bg-moss-soft text-moss",
-  QUIZ_PASSED: "bg-moss-soft text-moss",
+  CHECKPOINT_PASSED: "bg-moss-soft text-moss",
   CHECK_IN: "bg-ember-soft text-accent-foreground",
   ROLE_CHANGED: "bg-sky-soft text-sky",
   GLOBAL_ROLE_CHANGED: "bg-sky-soft text-sky",

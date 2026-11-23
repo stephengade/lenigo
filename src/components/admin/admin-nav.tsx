@@ -25,7 +25,7 @@ export function AdminNav() {
             aria-current={active ? "page" : undefined}
             className={cn(
               "flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm whitespace-nowrap transition-colors",
-              active ? "bg-white/10 font-medium text-white" : "text-primary-foreground/65 hover:bg-white/5 hover:text-white",
+              active ? "bg-white/10 font-medium text-white" : "text-ink-foreground/65 hover:bg-white/5 hover:text-white",
             )}
           >
             <Icon className={cn("size-4", active && "text-ember")} /> {label}
@@ -34,7 +34,7 @@ export function AdminNav() {
       })}
       <Link
         href="/c"
-        className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm whitespace-nowrap text-primary-foreground/50 hover:text-white md:mt-4"
+        className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm whitespace-nowrap text-ink-foreground/50 hover:text-white md:mt-4"
       >
         <ArrowLeft className="size-4" /> My communities
       </Link>
