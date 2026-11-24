@@ -37,7 +37,7 @@ export function AcceptInvite({ token, signedInAs, lockedTo }: { token: string; s
               className="underline underline-offset-2"
               onClick={async () => {
                 await fetch("/auth/signout", { method: "POST" });
-                router.replace(`/login?next=${encodeURIComponent(`/invite/${token}`)}`);
+                router.refresh();
               }}
             >
               Switch account

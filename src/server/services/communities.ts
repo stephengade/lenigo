@@ -23,6 +23,8 @@ import {
   RESERVED_SPACE_SLUGS,
   SLUG_PATTERN,
   space as spaceRules,
+  COMMUNITY_ROLES,
+  SPACE_ROLES,
   type CommunityRole,
   type SpaceRole,
 } from "@/lib/permissions";
@@ -314,6 +316,121 @@ export async function joinOpenSpace(access: SpaceAccess) {
   });
 }
 
+/* ── Member directories (built for communities of thousands) ───────── */
+
+export const MEMBERS_PAGE_SIZE = 50;
+
+export type MemberQuery = { q?: string; role?: string; page?: number };
+
+/** Case-insensitive match on name, email or GitHub handle; LIKE wildcards in the input are literal. */
+function memberSearch(q: string | undefined) {
+  const term = q?.trim().slice(0, 100);
+  if (!term) return undefined;
+  const like = `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  return sql`(${users.name} ilike ${like} or ${users.email} ilike ${like} or ${users.githubUsername} ilike ${like})`;
+}
+
+const pageOf = (page: number | undefined) => Math.max(1, Math.floor(page ?? 1) || 1);
+
+/**
+ * One page of a community's members, plus how many match and a count per role (for the filter
+ * chips). Ordered by role, then name, so the leads are always on page one.
+ */
+export async function pageCommunityMembers(communityId: string, query: MemberQuery) {
+  const role = (COMMUNITY_ROLES as readonly string[]).includes(query.role ?? "") ? (query.role as CommunityRole) : undefined;
+  const search = memberSearch(query.q);
+  const base = and(eq(communityMembers.communityId, communityId), search);
+  const page = pageOf(query.page);
+
+  const [rows, byRole] = await Promise.all([
+    db
+      .select({
+        userId: users.id,
+        name: users.name,
+        email: users.email,
+        avatarUrl: users.avatarUrl,
+        githubUsername: users.githubUsername,
+        role: communityMembers.role,
+        joinedAt: communityMembers.joinedAt,
+        spaces: sql<number>`(select count(*)::int from ${spaceMembers} sm where sm.community_id = ${communityId} and sm.user_id = "users"."id")`,
+      })
+      .from(communityMembers)
+      .innerJoin(users, eq(users.id, communityMembers.userId))
+      .where(and(base, role ? eq(communityMembers.role, role) : undefined))
+      .orderBy(sql`array_position(array['OWNER','ADMIN','MEMBER']::community_role[], ${communityMembers.role})`, asc(users.name), asc(users.email))
+      .limit(MEMBERS_PAGE_SIZE)
+      .offset((page - 1) * MEMBERS_PAGE_SIZE),
+    db
+      .select({ role: communityMembers.role, n: count() })
+      .from(communityMembers)
+      .innerJoin(users, eq(users.id, communityMembers.userId))
+      .where(base)
+      .groupBy(communityMembers.role),
+  ]);
+  const counts = Object.fromEntries(byRole.map((r) => [r.role, r.n])) as Partial<Record<CommunityRole, number>>;
+  const all = byRole.reduce((a, r) => a + r.n, 0);
+  return { rows, page, role, counts, all, total: role ? (counts[role] ?? 0) : all };
+}
+
+/** Same as pageCommunityMembers, for one space's team and learners. */
+export async function pageSpaceMembers(spaceId: string, query: MemberQuery) {
+  const role = (SPACE_ROLES as readonly string[]).includes(query.role ?? "") ? (query.role as SpaceRole) : undefined;
+  const search = memberSearch(query.q);
+  const base = and(eq(spaceMembers.spaceId, spaceId), search);
+  const page = pageOf(query.page);
+
+  const [rows, byRole] = await Promise.all([
+    db
+      .select({
+        userId: users.id,
+        name: users.name,
+        email: users.email,
+        avatarUrl: users.avatarUrl,
+        githubUsername: users.githubUsername,
+        role: spaceMembers.role,
+        joinedAt: spaceMembers.joinedAt,
+      })
+      .from(spaceMembers)
+      .innerJoin(users, eq(users.id, spaceMembers.userId))
+      .where(and(base, role ? eq(spaceMembers.role, role) : undefined))
+      .orderBy(sql`array_position(array['LEAD','MANAGER','MENTOR','MEMBER']::space_role[], ${spaceMembers.role})`, asc(users.name), asc(users.email))
+      .limit(MEMBERS_PAGE_SIZE)
+      .offset((page - 1) * MEMBERS_PAGE_SIZE),
+    db
+      .select({ role: spaceMembers.role, n: count() })
+      .from(spaceMembers)
+      .innerJoin(users, eq(users.id, spaceMembers.userId))
+      .where(base)
+      .groupBy(spaceMembers.role),
+  ]);
+  const counts = Object.fromEntries(byRole.map((r) => [r.role, r.n])) as Partial<Record<SpaceRole, number>>;
+  const all = byRole.reduce((a, r) => a + r.n, 0);
+  return { rows, page, role, counts, all, total: role ? (counts[role] ?? 0) : all };
+}
+
+/** For the space home: the team (everyone but learners, capped) and how many learners there are. */
+export async function spaceTeamSummary(spaceId: string) {
+  const [team, [{ learners }]] = await Promise.all([
+    db
+      .select({
+        userId: users.id,
+        name: users.name,
+        email: users.email,
+        avatarUrl: users.avatarUrl,
+        githubUsername: users.githubUsername,
+        role: spaceMembers.role,
+        joinedAt: spaceMembers.joinedAt,
+      })
+      .from(spaceMembers)
+      .innerJoin(users, eq(users.id, spaceMembers.userId))
+      .where(and(eq(spaceMembers.spaceId, spaceId), sql`${spaceMembers.role} <> 'MEMBER'`))
+      .orderBy(sql`array_position(array['LEAD','MANAGER','MENTOR','MEMBER']::space_role[], ${spaceMembers.role})`, asc(users.name))
+      .limit(200),
+    db.select({ learners: count() }).from(spaceMembers).where(and(eq(spaceMembers.spaceId, spaceId), eq(spaceMembers.role, "MEMBER"))),
+  ]);
+  return { team, learners };
+}
+
 /* ── Team management ───────────────────────────────────────────────── */
 
 export async function listSpaceMembers(spaceId: string) {
@@ -380,22 +497,25 @@ export async function removeSpaceMember(access: SpaceAccess, targetUserId: strin
   });
 }
 
-export async function listCommunityMembers(communityId: string) {
-  return db
-    .select({
-      userId: users.id,
-      name: users.name,
-      email: users.email,
-      avatarUrl: users.avatarUrl,
-      githubUsername: users.githubUsername,
-      role: communityMembers.role,
-      joinedAt: communityMembers.joinedAt,
-      spaces: sql<number>`(select count(*)::int from ${spaceMembers} sm where sm.community_id = ${communityId} and sm.user_id = "users"."id")`,
-    })
-    .from(communityMembers)
-    .innerJoin(users, eq(users.id, communityMembers.userId))
-    .where(eq(communityMembers.communityId, communityId))
-    .orderBy(sql`array_position(array['OWNER','ADMIN','MEMBER']::community_role[], ${communityMembers.role})`, asc(users.name));
+/** For the admin page: everyone with a community role (capped) and the total member count. */
+export async function communityLeadersSummary(communityId: string) {
+  const [leaders, [{ total }]] = await Promise.all([
+    db
+      .select({
+        userId: users.id,
+        name: users.name,
+        email: users.email,
+        avatarUrl: users.avatarUrl,
+        role: communityMembers.role,
+      })
+      .from(communityMembers)
+      .innerJoin(users, eq(users.id, communityMembers.userId))
+      .where(and(eq(communityMembers.communityId, communityId), sql`${communityMembers.role} <> 'MEMBER'`))
+      .orderBy(sql`array_position(array['OWNER','ADMIN','MEMBER']::community_role[], ${communityMembers.role})`, asc(users.name))
+      .limit(100),
+    db.select({ total: count() }).from(communityMembers).where(eq(communityMembers.communityId, communityId)),
+  ]);
+  return { leaders, total };
 }
 
 export async function changeCommunityRole(access: CommunityAccess, targetUserId: string, to: CommunityRole) {

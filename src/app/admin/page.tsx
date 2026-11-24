@@ -35,7 +35,7 @@ export default async function AdminOverview() {
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatTile icon={<Building2 />} tone="lilac" label="Communities" value={totals.communities} />
         <StatTile icon={<UserRound />} tone="mint" label="Users" value={totals.users} />
         <StatTile icon={<Zap />} tone="sun" label="Weekly active learners" value={totals.weeklyActive} hint="Earned points in the last 7 days" />

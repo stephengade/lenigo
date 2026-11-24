@@ -43,6 +43,13 @@
       "when": 1795539546914,
       "tag": "0005_people_management",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795542137673,
+      "tag": "0006_invite_signin_key",
+      "breakpoints": true
     }
   ]
 }

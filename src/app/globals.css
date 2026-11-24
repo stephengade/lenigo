@@ -247,6 +247,34 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Tailwind v4 dropped the pointer on buttons; everything clickable gets it back here. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="tab"],
+  [role="menuitem"],
+  [role="menuitemcheckbox"],
+  [role="menuitemradio"],
+  [role="option"],
+  [role="switch"],
+  [role="checkbox"],
+  [role="combobox"],
+  select,
+  summary,
+  label[for],
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="file"],
+  input[type="range"],
+  input[type="submit"],
+  input[type="button"],
+  a[href] {
+    cursor: pointer;
+  }
+  button:disabled,
+  [aria-disabled="true"],
+  [data-disabled] {
+    cursor: not-allowed;
+  }
   h1, h2, h3 {
     font-family: var(--font-display);
     letter-spacing: -0.015em;

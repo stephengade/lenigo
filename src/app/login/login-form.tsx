@@ -23,10 +23,25 @@ type Busy = null | "github" | "sending" | "verifying";
  * Email sign-in with a one-time code. The code is checked on the server (/auth/verify),
  * which also records the sign-in. No account needed beforehand: the first code creates it.
  */
-export function LoginForm({ next, github: githubEnabled }: { next: string; github: boolean }) {
+export function LoginForm({
+  next,
+  github: githubEnabled,
+  email: fixedEmail,
+  invite,
+  startWithCode = false,
+}: {
+  next: string;
+  github: boolean;
+  /** Invite emails: the address is fixed and its email already holds a code, so start at the code step. */
+  email?: string;
+  /** Invite token: accepted on the server straight after the code checks out. */
+  invite?: string;
+  /** The address already received a code (Supabase's invite email), so ask for it straight away. */
+  startWithCode?: boolean;
+}) {
   const router = useRouter();
-  const [step, setStep] = useState<Step>("email");
-  const [email, setEmail] = useState("");
+  const [step, setStep] = useState<Step>(startWithCode ? "code" : "email");
+  const [email, setEmail] = useState(fixedEmail ?? "");
   const [code, setCode] = useState("");
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState<Busy>(null);
@@ -52,7 +67,10 @@ export function LoginForm({ next, github: githubEnabled }: { next: string; githu
     const { error } = await createSupabaseBrowserClient().auth.signInWithOtp({
       email: email.trim(),
       // Only used by the email's "open the sign-in page" link; the code itself works anywhere.
-      options: { emailRedirectTo: `${location.origin}/login?next=${encodeURIComponent(next)}`, shouldCreateUser: true },
+      options: {
+        emailRedirectTo: invite ? `${location.origin}${next}` : `${location.origin}/login?next=${encodeURIComponent(next)}`,
+        shouldCreateUser: true,
+      },
     });
     setBusy(null);
     if (error) {
@@ -72,7 +90,7 @@ export function LoginForm({ next, github: githubEnabled }: { next: string; githu
       const res = await fetch("/auth/verify", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), code: code.trim(), next }),
+        body: JSON.stringify({ email: email.trim(), code: code.trim(), next, invite }),
       });
       const body = (await res.json().catch(() => ({}))) as { next?: string; error?: string };
       if (!res.ok || !body.next) {
@@ -97,7 +115,7 @@ export function LoginForm({ next, github: githubEnabled }: { next: string; githu
           </div>
           <h2 className="mt-4 font-display text-xl font-bold">{sent ? "Check your inbox" : "Enter your code"}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            {sent ? "We sent a sign-in code to " : "Use the sign-in code we emailed to "}
+            {sent ? "We sent a new sign-in code to " : fixedEmail ? "Enter the code from the invite email we sent to " : "Use the sign-in code we emailed to "}
             <span className="font-medium text-foreground">{email}</span>.
           </p>
           <div className="mt-5 space-y-1.5">
@@ -118,7 +136,7 @@ export function LoginForm({ next, github: githubEnabled }: { next: string; githu
           </div>
           <Button type="submit" size="lg" className="mt-4 w-full" disabled={busy !== null || code.length < 6}>
             {busy === "verifying" ? <Loader2 className="animate-spin" /> : null}
-            Sign in
+            {invite ? "Sign in and accept" : "Sign in"}
             <ArrowRight data-icon="inline-end" />
           </Button>
           {error ? (
@@ -131,6 +149,7 @@ export function LoginForm({ next, github: githubEnabled }: { next: string; githu
               {busy === "sending" ? <Loader2 className="animate-spin" /> : null}
               Send a new code
             </Button>
+            {fixedEmail ? null : (
             <Button
               type="button"
               variant="ghost"
@@ -143,6 +162,7 @@ export function LoginForm({ next, github: githubEnabled }: { next: string; githu
             >
               Use a different email
             </Button>
+            )}
           </div>
         </form>
       </div>
@@ -175,8 +195,11 @@ export function LoginForm({ next, github: githubEnabled }: { next: string; githu
             autoComplete="email"
             placeholder="ada@example.com"
             value={email}
+            readOnly={Boolean(fixedEmail)}
+            className={fixedEmail ? "bg-surface text-muted-foreground" : undefined}
             onChange={(e) => setEmail(e.target.value)}
           />
+          {fixedEmail ? <p className="text-xs text-muted-foreground">This invite was sent to this address.</p> : null}
         </div>
         <Button type="submit" size="lg" className="w-full" disabled={busy !== null || !email}>
           {busy === "sending" ? <Loader2 className="animate-spin" /> : null}

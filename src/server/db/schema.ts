@@ -229,6 +229,8 @@ export const invites = pgTable(
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     /** When the invite email last went out (creation or resend); resends are rate-limited on it. */
     lastSentAt: timestamp("last_sent_at", { withTimezone: true }),
+    /** sha256 of the one-click sign-in key in the invite email (never shown in the app). */
+    signinKeyHash: text("signin_key_hash"),
     createdById: uuid("created_by_id").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },

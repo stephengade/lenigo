@@ -80,11 +80,11 @@ export function StatTile({
   tone?: keyof typeof TILE_TONE;
 }) {
   return (
-    <div className="flex items-start gap-4 rounded-2xl bg-card p-5 shadow-card ring-1 ring-foreground/5">
+    <div className="flex flex-col items-start gap-3 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/5 sm:flex-row sm:gap-4 sm:p-5">
       {icon ? <span className={cn("grid size-11 shrink-0 place-items-center rounded-2xl [&_svg]:size-5", TILE_TONE[tone])}>{icon}</span> : null}
       <div className="min-w-0">
         <div className="text-sm text-muted-foreground">{label}</div>
-        <div className={cn("mt-1 font-display text-3xl leading-none font-bold tabular", accent && "text-primary")}>{value}</div>
+        <div className={cn("mt-1 font-display text-2xl leading-none font-bold tabular sm:text-3xl", accent && "text-primary")}>{value}</div>
         {hint ? <div className="mt-1.5 text-xs text-muted-foreground">{hint}</div> : null}
       </div>
     </div>

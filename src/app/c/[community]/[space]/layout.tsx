@@ -63,7 +63,7 @@ export default async function SpaceLayout({
           /
         </span>
         <span className="truncate text-sm font-semibold">{space.name}</span>
-        <RoleBadge role={spaceRole} />
+        <RoleBadge role={spaceRole} className="hidden shrink-0 sm:inline-flex" />
       </TopBar>
 
       {access.isOverride ? (

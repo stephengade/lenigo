@@ -11,7 +11,7 @@ import { CommunityControls } from "@/components/admin/community-controls";
 import { pageGlobalHouse } from "@/server/auth/guards";
 import { db } from "@/server/db";
 import { communities, spaces } from "@/server/db/schema";
-import { listCommunityHealth, listCommunityMembers } from "@/server/services/communities";
+import { communityLeadersSummary, listCommunityHealth } from "@/server/services/communities";
 import { listActivity } from "@/server/services/admin";
 import { global } from "@/lib/permissions";
 
@@ -31,7 +31,7 @@ export default async function AdminCommunityPage({ params }: { params: Promise<{
       .from(spaces)
       .where(and(eq(spaces.communityId, community.id), isNull(spaces.archivedAt)))
       .orderBy(spaces.position),
-    listCommunityMembers(community.id),
+    communityLeadersSummary(community.id),
     listActivity({ community: slug, limit: 15 }),
     listCommunityHealth().then((rows) => rows.find((r) => r.id === community.id)),
   ]);
@@ -78,7 +78,7 @@ export default async function AdminCommunityPage({ params }: { params: Promise<{
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <StatTile label="Members" value={members.length} />
+        <StatTile label="Members" value={members.total.toLocaleString()} />
         <StatTile label="WAU" value={health?.wau ?? 0} />
         <StatTile label="Shipped" value={health?.shipped ?? 0} accent />
         <StatTile label="Avg streak" value={`${health?.avgStreak ?? 0}d`} />
@@ -103,14 +103,12 @@ export default async function AdminCommunityPage({ params }: { params: Promise<{
 
           <h2 className="mt-8 mb-3 font-display text-2xl font-black tracking-tight uppercase">People with community roles</h2>
           <ul className="divide-y divide-border rounded-2xl bg-card shadow-card ring-1 ring-foreground/5">
-            {members.filter((m) => m.role !== "MEMBER").length === 0 ? (
+            {members.leaders.length === 0 ? (
               <li className="px-4 py-6 text-center text-sm text-muted-foreground">
                 The Community Lead hasn&rsquo;t accepted their invite yet. You can resend it from Manage people &amp; invites.
               </li>
             ) : null}
-            {members
-              .filter((m) => m.role !== "MEMBER")
-              .map((m) => (
+            {members.leaders.map((m) => (
                 <li key={m.userId} className="flex items-center gap-3 px-4 py-3">
                   <UserAvatar name={m.name} email={m.email} src={m.avatarUrl} />
                   <div className="min-w-0 flex-1">

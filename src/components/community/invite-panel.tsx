@@ -78,7 +78,7 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
   return (
     <div className="space-y-6">
       <form onSubmit={create} className="rounded-2xl bg-card shadow-card ring-1 ring-foreground/5 p-5">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-display text-lg font-bold">Invite people</h2>
           <div className="inline-flex rounded-full bg-surface p-1 text-sm" role="tablist">
             {(
@@ -98,7 +98,7 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
                   setExpiresInDays(m === "email" ? "14" : "7");
                 }}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-medium transition-colors",
+                  "inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-medium whitespace-nowrap transition-colors",
                   mode === m ? "bg-ink text-ink-foreground" : "text-muted-foreground hover:text-foreground",
                 )}
               >

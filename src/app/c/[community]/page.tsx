@@ -27,7 +27,7 @@ export default async function CommunityHubPage({ params }: { params: Promise<{ c
     <div className="min-h-dvh">
       <TopBar user={user}>
         <span className="truncate text-sm font-semibold">{community.name}</span>
-        {role ? <RoleBadge role={role} /> : null}
+        {role ? <RoleBadge role={role} className="hidden shrink-0 sm:inline-flex" /> : null}
       </TopBar>
 
       {access.isOverride ? (
@@ -53,7 +53,7 @@ export default async function CommunityHubPage({ params }: { params: Promise<{ c
           }
         />
 
-        <div className="mb-10 grid gap-4 sm:grid-cols-3">
+        <div className="mb-10 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
           <StatTile icon={<Layers />} tone="lilac" label="Spaces" value={spaces.length} />
           <StatTile icon={<Users />} tone="mint" label="Members" value={stats.members} />
           <StatTile icon={<FolderGit2 />} tone="sun" label="Projects shipped" value={stats.shipped} />

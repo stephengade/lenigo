@@ -7,7 +7,7 @@ import { UserAvatar } from "@/components/user-avatar";
 import { RoleBadge } from "@/components/role-badge";
 import { StandupForm } from "@/components/social/social";
 import { pageSpace } from "@/server/auth/guards";
-import { listSpaceMembers } from "@/server/services/communities";
+import { spaceTeamSummary } from "@/server/services/communities";
 import { listTracks } from "@/server/services/curriculum";
 import { getRoadmap } from "@/server/services/learning";
 import { getStanding, getStreak, getTodayStandup } from "@/server/services/social";
@@ -29,16 +29,14 @@ export default async function SpaceHomePage({ params }: { params: Promise<{ comm
   const base = `/c/${c}/${s}`;
   const firstName = user.name?.split(" ")[0] ?? "there";
 
-  const [members, tracks, roadmap, streak, standing, today] = await Promise.all([
-    listSpaceMembers(space.id),
+  const [{ team, learners }, tracks, roadmap, streak, standing, today] = await Promise.all([
+    spaceTeamSummary(space.id),
     listTracks(space.id),
     getRoadmap(access),
     getStreak(access),
     getStanding(space.id, user.id),
     getTodayStandup(access),
   ]);
-  const team = members.filter((m) => m.role !== "MEMBER");
-  const learners = members.length - team.length;
   const active = roadmap.progress.find((p) => p.activeModuleId) ?? roadmap.progress[0] ?? null;
   const activeModule = active?.levels.flatMap((l) => l.modules).find((m) => m.id === active.activeModuleId) ?? null;
   const openModules = roadmap.progress.flatMap((p) => p.levels.flatMap((l) => l.modules.filter((m) => !m.locked && !m.complete).map((m) => ({ id: m.id, title: m.title }))));
@@ -69,7 +67,7 @@ export default async function SpaceHomePage({ params }: { params: Promise<{ comm
       ) : null}
 
       {/* Points and rank come from the twice-daily leaderboard snapshot, never the live ledger. */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatTile icon={<Flame />} tone="sun" label="Current streak" value={`${streak.current} ${streak.current === 1 ? "day" : "days"}`} hint={streak.longest ? `Best: ${streak.longest}` : "Post a standup to start one"} />
         <StatTile
           icon={<Trophy />}

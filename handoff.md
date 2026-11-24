@@ -220,3 +220,12 @@ A scenario script drove the real services as a Lead, a community Owner (no space
 - **Seed curriculum:** GDG OAU Web Development tracks (Frontend, Backend, QA, Fullstack) aren't seeded. The user said they'll curate Frontend themselves.
 - **Email notifications** (review done, promoted, session tomorrow) aren't built.
 - The scenario test script isn't in the repo (see above).
+
+## Invites, email and big member lists (2026-11-24, later)
+
+- **The invite page signs you in itself.** No more detour to /login. Email invites lock the address; after the code checks out, `/auth/verify` accepts the invite in the same request and lands you in the community.
+- **ZeptoMail + React Email.** `src/server/email/send.ts` posts to the ZeptoMail API (`Zoho-enczapikey` header, click/open tracking off so one-time links aren't rewritten). Templates live in `src/emails` (`layout.tsx` brand shell, `invite.tsx`). Needs `ZEPTOMAIL_PASSWORD` + `EMAIL_FROM`; otherwise invites fall back to the Supabase code email, whose button opens the invite page where that code is entered.
+- **One-click accept** (needs `SUPABASE_SECRET_KEY` too): the email button carries a second secret `k` (sha256 in `invites.signin_key_hash`, migration 0006). The page shows an "Accept invite" button that POSTs to `/invite/<token>/accept` (same-origin, so mail scanners prefetching the GET can't use it). The route burns `k` in one UPDATE, refuses Super Admins and deactivated accounts, mints a session with `admin.generateLink` + `verifyOtp`, then redeems. The inviter only ever sees the plain link, so they can't sign in as the invitee. Resend rotates both secrets. The invite page sets `referrer: no-referrer`.
+- **Member lists scale.** Community members and space team pages are server-paged (50 per page), searchable (name / email / GitHub, LIKE wildcards escaped) and filterable by role with per-role counts; state is in the URL. The space home and the admin community page no longer load every member.
+- **Cursor and mobile.** Global `cursor: pointer` for clickable elements (Tailwind v4 removed it); stat tiles go two-up on phones; top-bar role badges hide below `sm`; members/team grids no longer overflow. All 22 pages were checked at 375 px for horizontal overflow (mostly empty data).
+- Not tested yet: a real ZeptoMail send (`EMAIL_FROM` isn't set) and one-click accept (`SUPABASE_SECRET_KEY` isn't set). Admin → Users still lists at most 100 (searchable), no paging.

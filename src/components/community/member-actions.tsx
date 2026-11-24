@@ -48,7 +48,7 @@ export function MemberRoleSelect({
   const options = assignable.includes(role) ? assignable : [role, ...assignable];
   return (
     <Select value={role} onValueChange={(v) => change(v as Role)} disabled={pending}>
-      <SelectTrigger size="sm" className="w-32" aria-label="Change role">
+      <SelectTrigger size="sm" className="w-auto min-w-32" aria-label="Change role">
         {pending ? <Loader2 className="size-3.5 animate-spin" /> : null}
         <SelectValue>{(v: Role) => ROLE_LABEL[v]}</SelectValue>
       </SelectTrigger>

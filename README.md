@@ -67,7 +67,8 @@ drizzle/                  SQL migrations
    ```
    Boards refresh at 06:00 and 18:00 UTC (7 AM / 7 PM in Lagos) for everyone. Keep this in sync with `src/lib/leaderboard.ts`.
 7. *(Optional)* Put a YouTube Data API v3 key in `YOUTUBE_API_KEY` (server-only, never `NEXT_PUBLIC_`). Lesson lengths then come from YouTube instead of the curator's number; the length caps credited watch time.
-8. For anything beyond local testing, set up **custom SMTP** (Authentication → Emails). Supabase's built-in mailer is heavily rate-limited.
+8. **Email (ZeptoMail).** Set `ZEPTOMAIL_PASSWORD` (Send Mail token) and `EMAIL_FROM` (a sender on a domain verified in ZeptoMail). Lenigo then sends its own invite emails, built with React Email (`src/emails`). Add `SUPABASE_SECRET_KEY` and the invite button signs the person in and accepts in one press; without it, the invite page asks for a sign-in code.
+   Sign-in codes still come from Supabase, so also point Supabase at ZeptoMail: **Authentication → Emails → SMTP Settings**: host `smtp.zeptomail.com`, port `587`, username `emailapikey`, password = the same token, sender = your `EMAIL_FROM` address. Supabase's built-in mailer is heavily rate-limited.
 
 > Every table has Row Level Security **enabled with no policies**. The app connects as the database owner over a direct connection (bypassing RLS), so this only stops Supabase's auto-generated REST API from exposing the tables to the publishable key. Don't add RLS policies unless you intend to use the Data API.
 

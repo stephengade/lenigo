@@ -3,12 +3,15 @@ import { z } from "zod";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { syncUserFromAuth } from "@/server/auth/session";
 import { safeNext } from "@/lib/safe-next";
+import { redeemInvite } from "@/server/services/invites";
 
 const Body = z.object({
   email: z.string().trim().toLowerCase().email().max(320),
   // Supabase codes are 6 digits by default (configurable up to 10).
   code: z.string().trim().regex(/^\d{6,10}$/),
   next: z.string().max(2048).optional(),
+  /** Invite token from /invite/<token>: accepted as soon as the code checks out. */
+  invite: z.string().min(16).max(128).optional(),
 });
 
 /**
@@ -41,6 +44,15 @@ export async function POST(request: NextRequest) {
   if (row.deactivatedAt) {
     await supabase.auth.signOut();
     return NextResponse.json({ error: "This account has been deactivated. Contact your community lead or the Lenigo team." }, { status: 403 });
+  }
+  if (parsed.data.invite) {
+    // Signed in either way; if accepting fails, the invite page shows why (wrong address, used up…).
+    try {
+      const { redirectTo } = await redeemInvite(row, parsed.data.invite);
+      return NextResponse.json({ next: redirectTo });
+    } catch {
+      return NextResponse.json({ next: `/invite/${encodeURIComponent(parsed.data.invite)}` });
+    }
   }
   return NextResponse.json({ next });
 }

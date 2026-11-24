@@ -17,6 +17,9 @@ import { env } from "@/server/env";
 import { logActivity } from "@/server/activity";
 import { fail, type CommunityAccess, type SpaceAccess } from "@/server/auth/access";
 import { community as communityRules, space as spaceRules, type CommunityRole, type SpaceRole } from "@/lib/permissions";
+import { format } from "date-fns";
+import { canSendEmail, sendEmail } from "@/server/email/send";
+import InviteEmail from "@/emails/invite";
 
 const COMMUNITY_RANK: Record<CommunityRole, number> = { OWNER: 3, ADMIN: 2, MEMBER: 1 };
 const SPACE_RANK: Record<SpaceRole, number> = { LEAD: 4, MANAGER: 3, MENTOR: 2, MEMBER: 1 };
@@ -119,19 +122,68 @@ export async function insertInvite(
 
   const url = inviteUrl(token);
   if (email && v.sendEmail !== false) {
-    const res = await sendInviteEmail(email, token);
+    const res = await sendInviteEmail(
+      {
+        inviteId: row.id,
+        email,
+        token,
+        place: v.label,
+        role: (v.spaceRole ?? v.communityRole)!,
+        inviter: actor.name ?? actor.email,
+        expiresAt: new Date(Date.now() + days * 86_400_000),
+      },
+      tx,
+    );
     if (res.ok) await tx.update(invites).set({ lastSentAt: new Date() }).where(eq(invites.id, row.id));
     return { id: row.id, url, emailed: res.ok, emailError: res.error };
   }
   return { id: row.id, url, emailed: false };
 }
 
+type InviteMail = {
+  inviteId: string;
+  email: string;
+  token: string;
+  place: string;
+  role: CommunityRole | SpaceRole;
+  inviter: string;
+  expiresAt: Date;
+};
+
+/** One-click invite emails need both our mailer and the Supabase secret key (to start the session). */
+export const oneClickInvites = () => canSendEmail() && Boolean(env.SUPABASE_SECRET_KEY);
+
 /**
- * Emails a Supabase sign-in code plus a link to /invite/<token> (the email's {{ .RedirectTo }}).
- * Uses Supabase's own mailer, so it creates the auth user if needed. Requires the
- * "Magic Link" and "Confirm signup" templates to show {{ .Token }} (see README → Supabase setup).
+ * Sends the invite email.
+ * - With ZeptoMail set up: Lenigo's own branded email with one "Accept invite" button. If one-click
+ *   is on, the button carries a sign-in key (hashed on the invite row, rotated on every send) that
+ *   only this email ever contains: the inviter sees the plain link, which still needs a sign-in.
+ * - Without it: Supabase's sign-in code email, whose button opens /invite/<token>, where the
+ *   invitee enters that code.
  */
-export async function sendInviteEmail(email: string, token: string): Promise<{ ok: boolean; error?: string }> {
+export async function sendInviteEmail(
+  m: InviteMail,
+  tx: Pick<typeof db, "update"> = db,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!canSendEmail()) return sendSupabaseCode(m.email, m.token);
+
+  let url = inviteUrl(m.token);
+  const oneClick = oneClickInvites();
+  if (oneClick) {
+    const key = newToken();
+    await tx.update(invites).set({ signinKeyHash: hashToken(key) }).where(eq(invites.id, m.inviteId));
+    url += `?k=${key}`;
+  }
+  const res = await sendEmail({
+    to: m.email,
+    subject: `You're invited to ${m.place} on Lenigo`,
+    react: InviteEmail({ place: m.place, role: m.role, inviter: m.inviter, url, expires: format(m.expiresAt, "d MMM yyyy"), oneClick }),
+  });
+  return res.ok ? { ok: true } : { ok: false, error: res.error };
+}
+
+/** Fallback: Supabase's own mailer sends a sign-in code; the email's button opens the invite page. */
+async function sendSupabaseCode(email: string, token: string): Promise<{ ok: boolean; error?: string }> {
   const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
@@ -139,7 +191,7 @@ export async function sendInviteEmail(email: string, token: string): Promise<{ o
     email,
     options: {
       shouldCreateUser: true,
-      emailRedirectTo: `${env.NEXT_PUBLIC_APP_URL}/invite/${token}`,
+      emailRedirectTo: inviteUrl(token),
     },
   });
   return error ? { ok: false, error: error.message } : { ok: true };
@@ -229,7 +281,8 @@ export async function resendInvite(
   canInvite: (role: CommunityRole | SpaceRole) => boolean,
 ): Promise<CreatedInvite> {
   const token = newToken();
-  const email = await db.transaction(async (tx) => {
+  const expiresAt = new Date(Date.now() + 14 * 86_400_000);
+  const mail = await db.transaction(async (tx) => {
     const [inv] = await tx
       .select()
       .from(invites)
@@ -252,7 +305,8 @@ export async function resendInvite(
     }
     await tx
       .update(invites)
-      .set({ tokenHash: hashToken(token), expiresAt: new Date(Date.now() + 14 * 86_400_000), lastSentAt: new Date() })
+      // A fresh link drops the old one-click key too; sendInviteEmail stores the new one.
+      .set({ tokenHash: hashToken(token), signinKeyHash: null, expiresAt, lastSentAt: new Date() })
       .where(eq(invites.id, inv.id));
     await logActivity(
       {
@@ -266,10 +320,24 @@ export async function resendInvite(
       },
       tx,
     );
-    return inv.email;
+    const [names] = await tx
+      .select({ community: communities.name, space: spaces.name })
+      .from(communities)
+      .leftJoin(spaces, inv.spaceId ? eq(spaces.id, inv.spaceId) : sql`false`)
+      .where(eq(communities.id, scope.communityId))
+      .limit(1);
+    return {
+      inviteId: inv.id,
+      email: inv.email,
+      token,
+      place: names?.space ? `${names.community} · ${names.space}` : (names?.community ?? "Lenigo"),
+      role: (inv.spaceRole ?? inv.communityRole)!,
+      inviter: actor.name ?? actor.email,
+      expiresAt,
+    } satisfies InviteMail;
   });
   // Sent after commit, so a rolled-back resend never emails a link that doesn't work.
-  const res = await sendInviteEmail(email, token);
+  const res = await sendInviteEmail(mail);
   return { id: inviteId, url: inviteUrl(token), emailed: res.ok, emailError: res.error };
 }
 

@@ -4,22 +4,32 @@ import { Logo } from "@/components/brand/logo";
 import { ButtonLink } from "@/components/button-link";
 import { RoleBadge } from "@/components/role-badge";
 import { getSessionUser } from "@/server/auth/session";
-import { previewInvite } from "@/server/services/invites";
+import { oneClickInvites, previewInvite } from "@/server/services/invites";
+import { canSendEmail } from "@/server/email/send";
+import { Button } from "@/components/ui/button";
+import { ArrowRight } from "lucide-react";
 import { AcceptInvite } from "./accept-invite";
+import { LoginForm } from "@/app/login/login-form";
+import { ROLE_BLURB } from "@/lib/role-copy";
 
-export const metadata = { title: "You're invited" };
+export const metadata = { title: "You're invited", referrer: "no-referrer" as const };
 
-const ROLE_BLURB: Record<string, string> = {
-  OWNER: "You'll run this community: create spaces, appoint admins and leads, and oversee every track.",
-  ADMIN: "You'll help run this community, with Lead access in every space.",
-  LEAD: "You'll own this space: curriculum, team, reviews and workshops.",
-  MANAGER: "You'll build curriculum, invite mentors and members, and review projects.",
-  MENTOR: "You'll review learners' projects, give feedback and run live review sessions.",
-  MEMBER: "You'll follow the roadmap, ship projects, post daily standups and climb the leaderboard.",
+const ERRORS: Record<string, string> = {
+  link_used: "That button has already been used or replaced by a newer invite email. Sign in with a code below instead.",
+  use_code: "For this account, confirm with a sign-in code below.",
+  deactivated: "This account has been deactivated. Contact your community lead or the Lenigo team.",
+  sign_in_failed: "We couldn't sign you in with the button. Use a sign-in code below instead.",
+  one_click_off: "Sign in with a code below to accept.",
 };
 
-export default async function InvitePage({ params }: { params: Promise<{ token: string }> }) {
-  const { token } = await params;
+export default async function InvitePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ token: string }>;
+  searchParams: Promise<{ k?: string; error?: string }>;
+}) {
+  const [{ token }, { k, error }] = await Promise.all([params, searchParams]);
   const [invite, user] = await Promise.all([previewInvite(token), getSessionUser()]);
   const next = `/invite/${token}`;
 
@@ -56,16 +66,36 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
 
               {user ? (
                 <AcceptInvite token={token} signedInAs={user.email} lockedTo={invite.email} />
-              ) : (
-                <div className="space-y-3">
-                  <ButtonLink href={`/login?next=${encodeURIComponent(next)}`} size="lg" className="w-full">
-                    Sign in to accept
-                  </ButtonLink>
+              ) : invite.email && k && !error && oneClickInvites() ? (
+                // One press from the invite email: signs in as the invited address and accepts (see ./accept/route.ts).
+                <form method="post" action={`/invite/${token}/accept`} className="space-y-3">
+                  <input type="hidden" name="k" value={k} />
+                  <Button type="submit" size="lg" className="w-full">
+                    Accept invite <ArrowRight data-icon="inline-end" />
+                  </Button>
                   <p className="text-center text-xs text-muted-foreground">
-                    {invite.email
-                      ? "Use the email address this invite was sent to."
-                      : "New to Lenigo? Signing in creates your account."}
+                    Signs you in as <span className="font-medium text-foreground">{invite.email}</span>
                   </p>
+                </form>
+              ) : (
+                <div className="-mt-3">
+                  {error ? (
+                    <p role="alert" className="mt-3 rounded-2xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                      {ERRORS[error] ?? "Sign in with a code below to accept."}
+                    </p>
+                  ) : null}
+                  {/* Sign in right here and the invite is accepted in the same step. Supabase's invite
+                      email already holds a code; Lenigo's own email doesn't, so that starts by sending one. */}
+                  <LoginForm
+                    next={next}
+                    github={false}
+                    email={invite.email ?? undefined}
+                    invite={token}
+                    startWithCode={Boolean(invite.email) && !canSendEmail()}
+                  />
+                  {invite.email ? null : (
+                    <p className="mt-3 text-center text-xs text-muted-foreground">New to Lenigo? Signing in creates your account.</p>
+                  )}
                 </div>
               )}
 

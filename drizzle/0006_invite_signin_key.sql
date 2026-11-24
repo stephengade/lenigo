@@ -1,0 +1,1 @@
+ALTER TABLE "invites" ADD COLUMN "signin_key_hash" text;

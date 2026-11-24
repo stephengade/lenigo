@@ -24,7 +24,7 @@ export default async function ReviewPage({ params }: { params: Promise<{ communi
     <div className="space-y-6">
       <PageHeader eyebrow="Mentors" title="Review queue" description="Oldest first. Approve and score, or request changes with feedback the learner can act on." />
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
         <StatTile icon={<ClipboardCheck />} tone="sun" label="Projects waiting" value={q.pending.length} />
         <StatTile icon={<Rocket />} tone="lilac" label="Placement tests" value={q.placementsToReview.length + q.placementsToPromote.length} />
         <StatTile

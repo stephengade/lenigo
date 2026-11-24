@@ -20,6 +20,28 @@ const schema = z.object({
     .string()
     .optional()
     .transform((v) => v?.trim().toLowerCase() === "true"),
+  /**
+   * ZeptoMail send-mail token (the SMTP password). When set together with EMAIL_FROM, Lenigo sends
+   * its own emails (invites); otherwise invites fall back to a Supabase sign-in code email.
+   */
+  ZEPTOMAIL_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim().replace(/^Zoho-enczapikey\s+/i, "") || undefined),
+  ZEPTOMAIL_API_URL: z.string().url().default("https://cpaas.zoho.com/v1.1/email"),
+  /** Sender, e.g. `Lenigo <hello@example.com>`. The domain must be verified in ZeptoMail. */
+  EMAIL_FROM: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim() || undefined),
+  /**
+   * Supabase secret key (sb_secret_…, never NEXT_PUBLIC_). Optional: it lets the button in an invite
+   * email sign the invitee in and accept in one press. Without it they confirm with a code instead.
+   */
+  SUPABASE_SECRET_KEY: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim() || undefined),
   /** Comma-separated emails promoted to SUPER_ADMIN on sign-in. Bootstraps the Global House. */
   SUPER_ADMIN_EMAILS: z
     .string()
