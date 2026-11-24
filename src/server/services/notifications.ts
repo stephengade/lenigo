@@ -71,11 +71,12 @@ async function deliver(
   to: NonNullable<Awaited<ReturnType<typeof recipient>>>,
   subject: string,
   props: Omit<NotificationEmailProps, "settingsUrl">,
-) {
-  if (!canSendEmail()) return;
+): Promise<boolean> {
+  if (!canSendEmail()) return true; // nothing to retry: email isn't set up
   const settingsUrl = to.username ? `${app()}/u/${to.username}` : app();
   const res = await sendEmail({ to: to.email, toName: to.name, subject, react: NotificationEmail({ ...props, settingsUrl }) });
   if (!res.ok) console.error(`[notify] "${subject}" not sent: ${res.error}`);
+  return res.ok;
 }
 
 /* ── Project reviewed ──────────────────────────────────────────────── */
@@ -160,8 +161,15 @@ export async function notifyPlacementReviewed(attemptId: string) {
 
 /* ── Sessions ──────────────────────────────────────────────────────── */
 
-const when = (d: Date, timeZone: string) =>
-  `${new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true, timeZone }).format(d)} (${timeZone})`;
+/** "Fri 28 Nov, 6:00 pm (Africa/Lagos)". An unknown zone falls back to UTC instead of throwing. */
+function when(d: Date, timeZone: string) {
+  const opts = { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true } as const;
+  try {
+    return `${new Intl.DateTimeFormat("en-GB", { ...opts, timeZone }).format(d)} (${timeZone})`;
+  } catch {
+    return `${new Intl.DateTimeFormat("en-GB", { ...opts, timeZone: "UTC" }).format(d)} (UTC)`;
+  }
+}
 
 /** Tell everyone who RSVP'd that a session was cancelled. Call with the rows read before deleting it. */
 export async function notifyWorkshopCancelled(w: { title: string; startsAt: Date; spaceId: string }, userIds: string[]) {
@@ -209,18 +217,36 @@ export async function sendWorkshopReminders(now = new Date()) {
 
   const ws = await db.select().from(workshops).where(inArray(workshops.id, [...new Set(claimed.map((c) => c.workshopId))]));
   const byId = new Map(ws.map((w) => [w.id, w]));
+  let sent = 0;
   for (const c of claimed) {
-    const w = byId.get(c.workshopId);
-    const [to, place] = await Promise.all([recipient(c.userId), w ? placeOf(w.spaceId) : null]);
-    if (!w || !to || !place) continue;
-    const where = w.type === "PHYSICAL" ? `At ${w.venue}.` : "Online: the call link is on the sessions page.";
-    await deliver(to, `Reminder: ${w.title}`, {
-      eyebrow: w.kind === "STANDUP_REVIEW" ? "Standup review" : "Workshop",
-      title: w.title,
-      lines: [`Starts ${when(w.startsAt, place.timezone)}. ${where}`, ...(c.presenting ? ["You're on the list to present your project."] : [])],
-      button: { label: "Open the session", url: `${place.base}/workshops` },
-      place: place.label,
-    });
+    let ok = false;
+    try {
+      const w = byId.get(c.workshopId);
+      const [to, place] = await Promise.all([recipient(c.userId), w ? placeOf(w.spaceId) : null]);
+      if (!w || !to || !place) {
+        ok = true; // opted out, deactivated or gone: nothing to send, don't retry
+      } else {
+        const where = w.type === "PHYSICAL" ? `At ${w.venue}.` : "Online: the call link is on the sessions page.";
+        ok = await deliver(to, `Reminder: ${w.title}`, {
+          eyebrow: w.kind === "STANDUP_REVIEW" ? "Standup review" : "Workshop",
+          title: w.title,
+          lines: [`Starts ${when(w.startsAt, place.timezone)}. ${where}`, ...(c.presenting ? ["You're on the list to present your project."] : [])],
+          button: { label: "Open the session", url: `${place.base}/workshops` },
+          place: place.label,
+        });
+        if (ok) sent++;
+      }
+    } catch (e) {
+      console.error("[notify] reminder failed", e);
+    }
+    // Not sent: release the claim so the next run tries again.
+    if (!ok) {
+      await db
+        .update(workshopRsvps)
+        .set({ remindedAt: null })
+        .where(and(eq(workshopRsvps.workshopId, c.workshopId), eq(workshopRsvps.userId, c.userId)))
+        .catch((e) => console.error("[notify] couldn't release reminder claim", e));
+    }
   }
-  return claimed.length;
+  return sent;
 }

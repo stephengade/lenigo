@@ -34,9 +34,11 @@ type CreateInviteInput = {
   maxUses?: number | null;
   expiresInDays?: number;
   sendEmail?: boolean;
+  /** Inside a transaction: don't email yet; return the mail for sendInviteAfterCommit. */
+  deferEmail?: boolean;
 };
 
-export type CreatedInvite = { id: string; url: string; emailed: boolean; emailError?: string };
+export type CreatedInvite = { id: string; url: string; emailed: boolean; emailError?: string; pendingMail?: InviteMail };
 
 /* ── Create ────────────────────────────────────────────────────────── */
 
@@ -122,22 +124,29 @@ export async function insertInvite(
 
   const url = inviteUrl(token);
   if (email && v.sendEmail !== false) {
-    const res = await sendInviteEmail(
-      {
-        inviteId: row.id,
-        email,
-        token,
-        place: v.label,
-        role: (v.spaceRole ?? v.communityRole)!,
-        inviter: actor.name ?? actor.email,
-        expiresAt: new Date(Date.now() + days * 86_400_000),
-      },
-      tx,
-    );
+    const mail: InviteMail = {
+      inviteId: row.id,
+      email,
+      token,
+      place: v.label,
+      role: (v.spaceRole ?? v.communityRole)!,
+      inviter: actor.name ?? actor.email,
+      expiresAt: new Date(Date.now() + days * 86_400_000),
+    };
+    if (v.deferEmail) return { id: row.id, url, emailed: false, pendingMail: mail };
+    const res = await sendInviteEmail(mail, tx);
     if (res.ok) await tx.update(invites).set({ lastSentAt: new Date() }).where(eq(invites.id, row.id));
     return { id: row.id, url, emailed: res.ok, emailError: res.error };
   }
   return { id: row.id, url, emailed: false };
+}
+
+/** Sends an invite created with `deferEmail`, once its transaction has committed. */
+export async function sendInviteAfterCommit(invite: CreatedInvite): Promise<CreatedInvite> {
+  if (!invite.pendingMail) return invite;
+  const res = await sendInviteEmail(invite.pendingMail);
+  if (res.ok) await db.update(invites).set({ lastSentAt: new Date() }).where(eq(invites.id, invite.id));
+  return { id: invite.id, url: invite.url, emailed: res.ok, emailError: res.error };
 }
 
 type InviteMail = {
@@ -166,15 +175,15 @@ export async function hasLenigoAccount(email: string) {
   return Boolean(row);
 }
 
-/** Whether this invite's email button may sign someone in right now (the accept route re-checks all of it). */
-export async function oneClickAvailable(token: string) {
+/** Whether this invite's email button (key `k`) may sign someone in right now (the accept route re-checks all of it). */
+export async function oneClickAvailable(token: string, k: string) {
   if (!oneClickInvites()) return false;
   const [inv] = await db
     .select({ email: invites.email, keyHash: invites.signinKeyHash, lastSentAt: invites.lastSentAt })
     .from(invites)
     .where(eq(invites.tokenHash, hashToken(token)))
     .limit(1);
-  if (!inv?.email || !inv.keyHash || !inv.lastSentAt) return false;
+  if (!inv?.email || !inv.keyHash || !inv.lastSentAt || inv.keyHash !== hashToken(k)) return false;
   if (Date.now() - inv.lastSentAt.getTime() > ONE_CLICK_TTL_MS) return false;
   return !(await hasLenigoAccount(inv.email));
 }
@@ -354,6 +363,7 @@ export async function resendInvite(
       .where(eq(communities.id, scope.communityId))
       .limit(1);
     return {
+      previousSentAt: inv.lastSentAt,
       inviteId: inv.id,
       email: inv.email,
       token,
@@ -361,10 +371,12 @@ export async function resendInvite(
       role: (inv.spaceRole ?? inv.communityRole)!,
       inviter: actor.name ?? actor.email,
       expiresAt,
-    } satisfies InviteMail;
+    } satisfies InviteMail & { previousSentAt: Date | null };
   });
   // Sent after commit, so a rolled-back resend never emails a link that doesn't work.
   const res = await sendInviteEmail(mail);
+  // Didn't go out: undo the cooldown so it can be resent straight away.
+  if (!res.ok) await db.update(invites).set({ lastSentAt: mail.previousSentAt }).where(eq(invites.id, inviteId));
   return { id: inviteId, url: inviteUrl(token), emailed: res.ok, emailError: res.error };
 }
 

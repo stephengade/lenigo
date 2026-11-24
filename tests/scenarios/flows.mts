@@ -610,8 +610,8 @@ check("the review action emailed B", (await mailsTo("b@example.test")).some((m) 
 
 console.log("\nSession reminders and cancellations");
 await clearMail();
-const soon = (await ok("mentor schedules a session in 2 hours", () =>
-  workshops.createWorkshop(mentor, { title: "Git clinic", kind: "WORKSHOP", type: "PHYSICAL", startsAt: new Date(Date.now() + 2 * 3600e3).toISOString(), venue: "Lab 2" }),
+const soon = (await ok("mentor schedules a session in 30 hours", () =>
+  workshops.createWorkshop(mentor, { title: "Git clinic", kind: "WORKSHOP", type: "PHYSICAL", startsAt: new Date(Date.now() + 30 * 3600e3).toISOString(), venue: "Lab 2" }),
 ))!;
 const later = (await ok("and one in 3 days", () =>
   workshops.createWorkshop(mentor, { title: "Career talk", kind: "WORKSHOP", type: "PHYSICAL", startsAt: new Date(Date.now() + 72 * 3600e3).toISOString(), venue: "Hall" }),
@@ -619,12 +619,42 @@ const later = (await ok("and one in 3 days", () =>
 await ok("A and B RSVP to both", async () => {
   for (const w of [soon, later]) for (const who of [A, B]) await workshops.rsvp(who, w.id, { going: true });
 });
+await db.update(S.workshops).set({ startsAt: new Date(Date.now() + 2 * 3600e3) }).where(eq(S.workshops.id, soon.id)); // now 2 hours away
 const n1 = await N.sendWorkshopReminders();
 check("reminders go to both RSVPs of the session starting soon", n1 === 2, String(n1));
 const n2 = await N.sendWorkshopReminders();
 check("running again sends nothing", n2 === 0, String(n2));
 const rem = await mailsTo("a@example.test");
 check("one reminder each, with time and venue", rem.length === 1 && rem[0].subject === "Reminder: Git clinic" && rem[0].textbody.includes("Lab 2") && rem[0].textbody.includes("Africa/Lagos"));
+await ok("A cancels and RSVPs again", async () => {
+  await workshops.rsvp(A, soon.id, { going: false });
+  await workshops.rsvp(A, soon.id, { going: true });
+});
+check("no second reminder after re-RSVPing inside the window", (await N.sendWorkshopReminders()) === 0);
+
+const odd = (await ok("a session in a community with an unknown timezone", async () => {
+  await db.update(S.communities).set({ timezone: "Not/AZone" }).where(eq(S.communities.id, community.id));
+  const w = await workshops.createWorkshop(mentor, { title: "Odd zone", kind: "WORKSHOP", type: "PHYSICAL", startsAt: new Date(Date.now() + 30 * 3600e3).toISOString(), venue: "Lab 3" });
+  await workshops.rsvp(B, w.id, { going: true });
+  await db.update(S.workshops).set({ startsAt: new Date(Date.now() + 3600e3) }).where(eq(S.workshops.id, w.id));
+  return w;
+}))!;
+await clearMail();
+check("still reminded, time shown in UTC", (await N.sendWorkshopReminders()) === 1 && (await mailsTo("b@example.test"))[0]?.textbody.includes("(UTC)"));
+await db.update(S.communities).set({ timezone: "Africa/Lagos" }).where(eq(S.communities.id, community.id));
+
+await ok("B re-RSVPs far ahead; the mailer is down at reminder time", async () => {
+  const w = await workshops.createWorkshop(mentor, { title: "Mailer down", kind: "WORKSHOP", type: "PHYSICAL", startsAt: new Date(Date.now() + 30 * 3600e3).toISOString(), venue: "Lab 4" });
+  await workshops.rsvp(B, w.id, { going: true });
+  await db.update(S.workshops).set({ startsAt: new Date(Date.now() + 3600e3) }).where(eq(S.workshops.id, w.id));
+});
+const mailMode = (m: "up" | "down") => fetch(process.env.MAIL_SINK_URL!.replace(/\/sent$/, "/mode"), { method: "PUT", body: m });
+await mailMode("down");
+check("a failed send isn't counted", (await N.sendWorkshopReminders()) === 0);
+await mailMode("up");
+check("and is retried on the next run", (await N.sendWorkshopReminders()) === 1);
+void odd;
+
 await clearMail();
 await ok("mentor cancels the later session", () => workshops.cancelWorkshop(mentor, later.id));
 check("everyone who RSVP'd hears it was cancelled", (await mailsTo("a@example.test"))[0]?.subject === "Cancelled: Career talk" && (await mailsTo("b@example.test")).length === 1);
@@ -667,13 +697,16 @@ check("bot request not stored", (await db.select().from(S.communityRequests)).le
 await refuses("about must say something", () => R.submitCommunityRequest({ ...goodReq, about: "hi" }, "203.0.113.9"), /a little about/);
 await refuses("size must be one of the options", () => R.submitCommunityRequest({ ...goodReq, size: "lots" }, "203.0.113.9"), /Pick a size/);
 await refuses("links must be https", () => R.submitCommunityRequest({ ...goodReq, link: "javascript:alert(1)" }, "203.0.113.9"), /https/);
+await refuses("emails can't carry mailto extras", () => R.submitCommunityRequest({ ...goodReq, email: "a@x.io?bcc=evil@x.io" }, "203.0.113.9"), /email we can reply/);
 await ok("same email, second request today", () => R.submitCommunityRequest({ ...goodReq, communityName: "GDG Ibadan 2" }, "203.0.113.10"));
 await refuses("third from the same email today is refused", () => R.submitCommunityRequest({ ...goodReq, communityName: "GDG Ibadan 3" }, "203.0.113.11"), /already got/);
 for (let i = 0; i < 3; i++) await R.submitCommunityRequest({ ...goodReq, email: `ip${i}@example.test` }, "198.51.100.1");
 await refuses("fourth from one IP within an hour is refused", () => R.submitCommunityRequest({ ...goodReq, email: "ip9@example.test" }, "198.51.100.1"), /already got/);
+for (let i = 0; i < 3; i++) await R.submitCommunityRequest({ ...goodReq, email: `noip${i}@example.test` }, null);
+await refuses("senders with no known IP share one limit", () => R.submitCommunityRequest({ ...goodReq, email: "noip9@example.test" }, null), /already got/);
 await refuses("only Super Admins/Admins list requests", () => R.listCommunityRequests(pLead), /permission/);
 const listed = await R.listCommunityRequests(root);
-check("open requests listed newest first", listed.rows.length === 5 && listed.counts.NEW === 5);
+check("open requests listed newest first", listed.rows.length === 8 && listed.counts.NEW === 8, String(listed.rows.length));
 await ok("mark one contacted", () => R.setCommunityRequestStatus(root, listed.rows[0].r.id, "CONTACTED"));
 check("status and handler recorded", (await R.listCommunityRequests(root, "CONTACTED")).rows[0]?.handledBy === "P1 root");
 await refuses("a regular user can't change status", () => R.setCommunityRequestStatus(pLead, listed.rows[0].r.id, "DECLINED"), /permission/);

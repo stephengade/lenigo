@@ -31,7 +31,10 @@ const PER_EMAIL_PER_DAY = 2;
 const ALL_PER_HOUR = 60;
 
 /** Keyed hash of the sender's IP, so limits work without storing the address. */
-const ipHash = (ip: string | null) => (ip ? createHmac("sha256", env.DATABASE_URL).update(`community-request:${ip}`).digest("hex") : null);
+const ipHash = (ip: string | null) => createHmac("sha256", env.DATABASE_URL).update(`community-request:${ip ?? "unknown"}`).digest("hex");
+
+/** Plain addresses only: no `?`, `&`, `%` or `/`, so it's safe in a mailto: link and a reply-to. */
+const EMAIL = /^[A-Za-z0-9._+'-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$/;
 
 const clean = (v: string | null | undefined, max: number) => {
   const s = v?.replace(/\s+/g, " ").trim() ?? "";
@@ -52,7 +55,7 @@ export async function submitCommunityRequest(input: CommunityRequestInput, ip: s
   const location = clean(input.location, 120);
   const about = input.about?.trim().slice(0, 2000) ?? "";
   if (!name || name.length < 2) throw fail.badRequest("Tell us your name.");
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw fail.badRequest("Enter an email we can reply to.");
+  if (!email || !EMAIL.test(email)) throw fail.badRequest("Enter an email we can reply to.");
   if (!communityName || communityName.length < 2) throw fail.badRequest("What's your community called?");
   if (!(COMMUNITY_SIZES as readonly string[]).includes(input.size)) throw fail.badRequest("Pick a size.");
   if (about.length < 20) throw fail.badRequest("Tell us a little about your community and what you want to learn (a sentence or two).");
@@ -71,13 +74,11 @@ export async function submitCommunityRequest(input: CommunityRequestInput, ip: s
   const hourAgo = new Date(Date.now() - 3_600_000);
   const dayAgo = new Date(Date.now() - 86_400_000);
   const [[byIp], [byEmail], [all]] = await Promise.all([
-    hash
-      ? db.select({ n: count() }).from(communityRequests).where(and(eq(communityRequests.ipHash, hash), gt(communityRequests.createdAt, hourAgo)))
-      : Promise.resolve([{ n: 0 }]),
+    db.select({ n: count() }).from(communityRequests).where(and(eq(communityRequests.ipHash, hash), gt(communityRequests.createdAt, hourAgo))),
     db.select({ n: count() }).from(communityRequests).where(and(sql`lower(${communityRequests.email}) = ${email}`, gt(communityRequests.createdAt, dayAgo))),
     db.select({ n: count() }).from(communityRequests).where(gt(communityRequests.createdAt, hourAgo)),
   ]);
-  if (byIp.n >= PER_IP_PER_HOUR || byEmail.n >= PER_EMAIL_PER_DAY || all.n >= ALL_PER_HOUR) {
+  if (byIp.n >= PER_IP_PER_HOUR || byEmail.n >= PER_EMAIL_PER_DAY) {
     throw fail.tooMany("We've already got your request. We'll be in touch; try again later if you need to add something.");
   }
 
@@ -86,7 +87,8 @@ export async function submitCommunityRequest(input: CommunityRequestInput, ip: s
     .values({ name, email, communityName, size: input.size, location, about, link, ipHash: hash })
     .returning();
   await logActivity({ actorUserId: null, actionType: "COMMUNITY_REQUESTED", entityType: "community_request", entityId: row.id, metadata: { communityName, size: input.size } });
-  await afterResponse(() => emailTheTeam(row));
+  // A flood still gets stored (each sender is limited above) but stops emailing the team.
+  if (all.n < ALL_PER_HOUR) await afterResponse(() => emailTheTeam(row));
   return { ok: true as const };
 }
 

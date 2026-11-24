@@ -93,8 +93,8 @@ export function BringForm() {
       </Field>
       {/* Honeypot: hidden from people and screen readers; bots fill it in. */}
       <div aria-hidden className="absolute -left-[9999px] h-px w-px overflow-hidden">
-        <label htmlFor="br-website">Website</label>
-        <input id="br-website" tabIndex={-1} autoComplete="off" value={f.website} onChange={set("website")} />
+        <label htmlFor="br-hp">Leave this empty</label>
+        <input id="br-hp" name="hp_extra" tabIndex={-1} autoComplete="off" data-1p-ignore data-lpignore="true" value={f.website} onChange={set("website")} />
       </div>
       <Button type="submit" size="lg" className="w-full" disabled={pending}>
         {pending ? <Loader2 className="animate-spin" /> : null} Send request

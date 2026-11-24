@@ -49,8 +49,15 @@ const schema = z.object({
   CRON_SECRET: z
     .string()
     .optional()
-    .transform((v) => v?.trim() || undefined)
-    .refine((v) => !v || v.length >= 24, "CRON_SECRET should be at least 24 characters"),
+    .transform((v) => {
+      const s = v?.trim();
+      if (!s) return undefined;
+      if (s.length < 24) {
+        console.warn("[env] CRON_SECRET is shorter than 24 characters, so /cron routes stay off.");
+        return undefined;
+      }
+      return s;
+    }),
   /** Comma-separated emails promoted to SUPER_ADMIN on sign-in. Bootstraps the Global House. */
   SUPER_ADMIN_EMAILS: z
     .string()

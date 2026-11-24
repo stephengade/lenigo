@@ -34,7 +34,7 @@ export default async function InvitePage({
   const [invite, user, oneClick] = await Promise.all([
     previewInvite(token),
     getSessionUser(),
-    k && !error ? oneClickAvailable(token) : false,
+    k && !error ? oneClickAvailable(token, k) : false,
   ]);
   // Came from the email's button but one-click doesn't apply (existing account, or past 72 hours).
   const notice = error ?? (k && !oneClick ? "use_code_or_expired" : undefined);

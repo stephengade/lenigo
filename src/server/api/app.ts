@@ -86,7 +86,8 @@ export const app = new Elysia({ prefix: "/api" })
   .post(
     "/community-requests",
     async ({ body, request }) => {
-      const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || null;
+      // The proxy in front (Vercel, nginx) sets these. Unknown senders share one rate-limit bucket.
+      const ip = request.headers.get("x-real-ip") || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
       return await submitCommunityRequest(body, ip);
     },
     {

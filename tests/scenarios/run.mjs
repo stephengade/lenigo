@@ -82,6 +82,7 @@ const dbPort = dbServer.address().port;
 
 /* ── Fake ZeptoMail ───────────────────────────────────────────────── */
 const sent = [];
+let down = false; // PUT /mode "down" makes sends fail, to test retries
 const mail = createHttpServer((req, res) => {
   let body = "";
   req.on("data", (c) => (body += c));
@@ -89,10 +90,12 @@ const mail = createHttpServer((req, res) => {
     res.setHeader("content-type", "application/json");
     if (req.method === "POST" && req.url === "/v1.1/email") {
       if (req.headers.authorization !== "Zoho-enczapikey test-token") return res.writeHead(401).end("{}");
+      if (down) return res.writeHead(503).end(JSON.stringify({ error: { message: "Service unavailable" } }));
       sent.push(JSON.parse(body));
       return res.writeHead(201).end(JSON.stringify({ data: [{ code: "EM_104", message: "Email request received" }] }));
     }
     if (req.method === "GET" && req.url === "/sent") return res.end(JSON.stringify(sent));
+    if (req.method === "PUT" && req.url === "/mode") return (down = body.trim() === "down"), res.end("{}");
     if (req.method === "DELETE" && req.url === "/sent") return (sent.length = 0), res.end("[]");
     res.writeHead(404).end("{}");
   });

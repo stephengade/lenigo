@@ -16,7 +16,7 @@ import {
 } from "@/server/db/schema";
 import { logActivity } from "@/server/activity";
 import { fail, type CommunityAccess, type SpaceAccess } from "@/server/auth/access";
-import { insertInvite, type CreatedInvite } from "@/server/services/invites";
+import { insertInvite, sendInviteAfterCommit, type CreatedInvite } from "@/server/services/invites";
 import {
   community as communityRules,
   global,
@@ -59,7 +59,7 @@ export async function provisionCommunity(actor: User, input: ProvisionInput) {
     throw fail.badRequest("Two spaces would share the same URL. Rename one of them.");
   }
 
-  return db.transaction(async (tx) => {
+  const created = await db.transaction(async (tx) => {
     const [taken] = await tx.select({ id: communities.id }).from(communities).where(eq(communities.slug, slug)).limit(1);
     if (taken) throw fail.conflict(`/c/${slug} is already taken.`);
 
@@ -101,8 +101,6 @@ export async function provisionCommunity(actor: User, input: ProvisionInput) {
       tx,
     );
 
-    // The magic-link email is sent after commit would be ideal; Supabase's mailer is idempotent enough
-    // that a rare rollback just leaves an unused sign-in email.
     const invite: CreatedInvite = await insertInvite(
       actor,
       {
@@ -114,12 +112,15 @@ export async function provisionCommunity(actor: User, input: ProvisionInput) {
         email: ownerEmail,
         expiresInDays: 14,
         sendEmail: true,
+        deferEmail: true,
       },
       tx,
     );
 
     return { community, spaces: createdSpaces, ownerInvite: invite, ownerAlreadyMember: Boolean(owner) };
   });
+  // Emailed after commit: a rolled-back provision never sends a link that doesn't work.
+  return { ...created, ownerInvite: await sendInviteAfterCommit(created.ownerInvite) };
 }
 
 export async function setCommunityStatus(actor: User, communityId: string, status: "ACTIVE" | "SUSPENDED") {

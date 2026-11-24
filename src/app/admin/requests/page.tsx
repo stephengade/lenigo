@@ -69,7 +69,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
               </div>
               <p className="mt-3 text-sm whitespace-pre-line">{r.about}</p>
               <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-                <a href={`mailto:${r.email}?subject=${encodeURIComponent(`${r.communityName} on Lenigo`)}`} className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline">
+                <a href={`mailto:${encodeURIComponent(r.email)}?subject=${encodeURIComponent(`${r.communityName} on Lenigo`)}`} className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline">
                   <Mail className="size-4" /> {r.name} &lt;{r.email}&gt;
                 </a>
                 {r.link ? (

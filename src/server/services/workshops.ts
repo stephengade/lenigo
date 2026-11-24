@@ -4,7 +4,7 @@ import { db } from "@/server/db";
 import { modules, spaceMembers, submissions, users, workshopRsvps, workshops } from "@/server/db/schema";
 import { fail, type MemberAccess } from "@/server/auth/access";
 import { logActivity } from "@/server/activity";
-import { afterResponse, notifyWorkshopCancelled } from "@/server/services/notifications";
+import { afterResponse, notifyWorkshopCancelled, REMINDER_WINDOW_MS } from "@/server/services/notifications";
 import { awardPoints } from "@/server/points/rules";
 import { space as spaceRules } from "@/lib/permissions";
 
@@ -132,7 +132,10 @@ export async function rsvp(a: MemberAccess, id: string, input: { going: boolean;
   if (existing) {
     await db.update(workshopRsvps).set({ submissionId }).where(and(eq(workshopRsvps.workshopId, w.id), eq(workshopRsvps.userId, a.user.id)));
   } else {
-    await db.insert(workshopRsvps).values({ workshopId: w.id, userId: a.user.id, submissionId }).onConflictDoNothing();
+    // Inside the reminder window they've just seen the time, so no "starts soon" email (also stops a
+    // second reminder after cancelling and RSVPing again).
+    const remindedAt = w.startsAt.getTime() - Date.now() <= REMINDER_WINDOW_MS ? new Date() : null;
+    await db.insert(workshopRsvps).values({ workshopId: w.id, userId: a.user.id, submissionId, remindedAt }).onConflictDoNothing();
   }
   return { going: true };
 }
