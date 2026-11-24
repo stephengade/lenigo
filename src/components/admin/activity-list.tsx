@@ -40,6 +40,14 @@ function describe(item: ActivityItem): string {
       return `joined as ${role ?? "member"}`;
     case "INVITE_REVOKED":
       return "revoked an invite";
+    case "INVITE_RESENT":
+      return "resent an invite";
+    case "LEAD_HANDED_OVER":
+      return m.steppedDown ? "handed over the Community Lead role" : "appointed a Community Lead";
+    case "USER_DEACTIVATED":
+      return "deactivated an account";
+    case "USER_REACTIVATED":
+      return "reactivated an account";
     case "ROLE_CHANGED":
       return `changed a ${m.scope ?? ""} role ${String(m.from ?? "").toLowerCase()} → ${String(m.to ?? "").toLowerCase()}`;
     case "GLOBAL_ROLE_CHANGED":
@@ -49,7 +57,7 @@ function describe(item: ActivityItem): string {
     case "MEMBER_JOINED":
       return "joined a space";
     case "MEMBER_REMOVED":
-      return m.left ? "left a space" : "removed a member";
+      return m.left ? "left a space" : m.scope === "community" ? "removed someone from the community" : "removed a member";
     case "DELETE_COMMUNITY":
       return `deleted ${m.name ?? "a community"}`;
     default:

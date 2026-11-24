@@ -36,6 +36,13 @@
       "when": 1795538160162,
       "tag": "0004_append_only_deletes",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795539546914,
+      "tag": "0005_people_management",
+      "breakpoints": true
     }
   ]
 }

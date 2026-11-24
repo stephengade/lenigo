@@ -16,9 +16,9 @@ export const ROLE_LABEL: Record<GlobalRole | CommunityRole | SpaceRole, string> 
   ADMIN: "Admin",
   VIEWER: "Viewer",
   USER: "User",
-  OWNER: "Owner",
+  OWNER: "Community Lead",
   MEMBER: "Member",
-  LEAD: "Lead",
+  LEAD: "Space Lead",
   MANAGER: "Manager",
   MENTOR: "Mentor",
 };
@@ -31,6 +31,8 @@ export const global = {
   canSuspend: (r: GlobalRole) => r === "SUPER_ADMIN" || r === "ADMIN",
   canDeleteCommunity: (r: GlobalRole) => r === "SUPER_ADMIN",
   canAssignGlobalRoles: (r: GlobalRole) => r === "SUPER_ADMIN",
+  /** Deactivate/reactivate a person platform-wide (they can't sign in; history is kept). */
+  canDeactivateUsers: (r: GlobalRole) => r === "SUPER_ADMIN",
   /** Super Admins can open and act inside any community as if they were its Owner. */
   overridesCommunities: (r: GlobalRole) => r === "SUPER_ADMIN",
 };
@@ -55,6 +57,14 @@ export const community = {
     if (actor === "ADMIN") return COMMUNITY_RANK[target] < 2 && COMMUNITY_RANK[to] < 2;
     return false;
   },
+  /** Remove someone from the community (and all its spaces). Admins remove Members only. */
+  canRemove(actor: CommunityRole | null, target: CommunityRole) {
+    if (actor === "OWNER") return true;
+    if (actor === "ADMIN") return COMMUNITY_RANK[target] < 2;
+    return false;
+  },
+  /** Hand the Community Lead role to another member (the DB keeps at least one Lead). */
+  canHandOver: (r: CommunityRole | null) => r === "OWNER",
 };
 
 /** Community Owners and Admins act as Lead in every space of their community. */

@@ -4,6 +4,7 @@ import { db } from "@/server/db";
 import { activityLogs, communities, communityMembers, spaces, users, type User } from "@/server/db/schema";
 import { logActivity } from "@/server/activity";
 import { fail } from "@/server/auth/access";
+import { env } from "@/server/env";
 import { global, type GlobalRole } from "@/lib/permissions";
 
 export type ActivityFilters = {
@@ -63,6 +64,7 @@ export async function listUsers(q?: string, limit = 100) {
       globalRole: users.globalRole,
       createdAt: users.createdAt,
       lastSeenAt: users.lastSeenAt,
+      deactivatedAt: users.deactivatedAt,
       communities: sql<string[]>`coalesce((select array_agg(c.slug order by c.slug) from ${communityMembers} cm join ${communities} c on c.id = cm.community_id where cm.user_id = ${users.id}), '{}')`,
     })
     .from(users)
@@ -93,6 +95,37 @@ export async function setGlobalRole(actor: User, targetUserId: string, role: Glo
     entityType: "user",
     entityId: targetUserId,
     metadata: { from: target.role, to: role },
+  });
+}
+
+/**
+ * Deactivate (or restore) a person platform-wide. A deactivated account can't sign in or use
+ * the API (see getSessionUser), but nothing is deleted: memberships, points and history stay,
+ * and reactivating restores everything. Super Admins can't be deactivated: demote them first.
+ */
+export async function setUserActive(actor: User, targetUserId: string, active: boolean) {
+  if (!global.canDeactivateUsers(actor.globalRole)) throw fail.forbidden();
+  if (targetUserId === actor.id) throw fail.forbidden("You can't deactivate yourself.");
+  const [target] = await db
+    .select({ email: users.email, role: users.globalRole, deactivatedAt: users.deactivatedAt })
+    .from(users)
+    .where(eq(users.id, targetUserId))
+    .limit(1);
+  if (!target) throw fail.notFound("User not found");
+  if (!active && (target.role === "SUPER_ADMIN" || env.SUPER_ADMIN_EMAILS.includes(target.email.toLowerCase()))) {
+    throw fail.forbidden("Super Admins can't be deactivated. Change their global role first.");
+  }
+  if (active === !target.deactivatedAt) return;
+
+  await db
+    .update(users)
+    .set(active ? { deactivatedAt: null, deactivatedById: null } : { deactivatedAt: new Date(), deactivatedById: actor.id })
+    .where(eq(users.id, targetUserId));
+  await logActivity({
+    actorUserId: actor.id,
+    actionType: active ? "USER_REACTIVATED" : "USER_DEACTIVATED",
+    entityType: "user",
+    entityId: targetUserId,
   });
 }
 

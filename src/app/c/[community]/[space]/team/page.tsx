@@ -43,7 +43,7 @@ export default async function SpaceTeamPage({ params }: { params: Promise<{ comm
           <ul className="divide-y divide-border rounded-2xl bg-card shadow-card ring-1 ring-foreground/5">
             {members.length === 0 ? (
               <li className="px-4 py-10 text-center text-sm text-muted-foreground">
-                Nobody has joined yet. Community Owners and Admins already have Lead access.
+                Nobody has joined yet. Community Leads and Admins already have Space Lead access.
               </li>
             ) : null}
             {members.map((m) => {
@@ -84,6 +84,7 @@ export default async function SpaceTeamPage({ params }: { params: Promise<{ comm
               uses: i.uses,
               maxUses: i.maxUses,
               expiresAt: i.expiresAt.toISOString(),
+              expired: i.expired,
               createdBy: i.createdBy ?? i.createdByEmail,
             }))}
           />

@@ -20,7 +20,7 @@ export default async function NewCommunityPage() {
       <PageHeader
         eyebrow="FR-1.1"
         title="Provision a community"
-        description="Creates the community and its spaces, makes the owner its Owner, and emails them the invite with a sign-in code."
+        description="Creates the community and its spaces, makes the person you name its Community Lead, and emails them the invite with a sign-in code."
       />
       <ProvisionForm />
     </div>

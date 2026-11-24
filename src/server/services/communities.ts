@@ -5,6 +5,7 @@ import {
   activityLogs,
   communities,
   communityMembers,
+  invites,
   pointsLedger,
   spaceMembers,
   spaces,
@@ -418,5 +419,93 @@ export async function changeCommunityRole(access: CommunityAccess, targetUserId:
     entityType: "user",
     entityId: targetUserId,
     metadata: { scope: "community", from: target.role, to },
+  });
+}
+
+/**
+ * Remove someone from the community and every space in it. Their learning history (points,
+ * submissions, levels) is kept, so it comes back if they're invited again. Pending email
+ * invites to them in this community are revoked so they can't walk straight back in.
+ * The DB refuses removing the last Community Lead (migration 0005).
+ */
+export async function removeCommunityMember(access: CommunityAccess, targetUserId: string) {
+  if (targetUserId === access.user.id) throw fail.forbidden("You can't remove yourself.");
+  await db.transaction(async (tx) => {
+    const [target] = await tx
+      .select({ role: communityMembers.role, email: users.email })
+      .from(communityMembers)
+      .innerJoin(users, eq(users.id, communityMembers.userId))
+      .where(and(eq(communityMembers.communityId, access.community.id), eq(communityMembers.userId, targetUserId)))
+      .for("update", { of: communityMembers })
+      .limit(1);
+    if (!target) throw fail.notFound("Member not found");
+    if (!communityRules.canRemove(access.role, target.role)) throw fail.forbidden();
+
+    const removedSpaces = await tx
+      .delete(spaceMembers)
+      .where(and(eq(spaceMembers.communityId, access.community.id), eq(spaceMembers.userId, targetUserId)))
+      .returning({ spaceId: spaceMembers.spaceId });
+    await tx
+      .delete(communityMembers)
+      .where(and(eq(communityMembers.communityId, access.community.id), eq(communityMembers.userId, targetUserId)));
+    await tx
+      .update(invites)
+      .set({ revokedAt: new Date() })
+      .where(and(eq(invites.communityId, access.community.id), eq(invites.email, target.email.toLowerCase()), isNull(invites.revokedAt)));
+
+    await logActivity(
+      {
+        actorUserId: access.user.id,
+        actionType: "MEMBER_REMOVED",
+        communityId: access.community.id,
+        entityType: "user",
+        entityId: targetUserId,
+        metadata: { scope: "community", role: target.role, spaces: removedSpaces.length },
+      },
+      tx,
+    );
+  });
+}
+
+/**
+ * Hand the Community Lead role to another member: they become Lead and the current Lead
+ * steps down to Admin, in one transaction. A Super Admin acting through the override isn't a
+ * member, so for them this only appoints the new Lead.
+ */
+export async function handOverLead(access: CommunityAccess, targetUserId: string) {
+  if (!communityRules.canHandOver(access.role)) throw fail.forbidden();
+  if (targetUserId === access.user.id) throw fail.badRequest("Choose someone else to hand over to.");
+  await db.transaction(async (tx) => {
+    const [target] = await tx
+      .select({ role: communityMembers.role })
+      .from(communityMembers)
+      .where(and(eq(communityMembers.communityId, access.community.id), eq(communityMembers.userId, targetUserId)))
+      .for("update")
+      .limit(1);
+    if (!target) throw fail.notFound("They need to be a member of the community first.");
+
+    if (target.role !== "OWNER") {
+      await tx
+        .update(communityMembers)
+        .set({ role: "OWNER" })
+        .where(and(eq(communityMembers.communityId, access.community.id), eq(communityMembers.userId, targetUserId)));
+    }
+    if (access.membershipRole === "OWNER") {
+      await tx
+        .update(communityMembers)
+        .set({ role: "ADMIN" })
+        .where(and(eq(communityMembers.communityId, access.community.id), eq(communityMembers.userId, access.user.id)));
+    }
+    await logActivity(
+      {
+        actorUserId: access.user.id,
+        actionType: "LEAD_HANDED_OVER",
+        communityId: access.community.id,
+        entityType: "user",
+        entityId: targetUserId,
+        metadata: { from: target.role, steppedDown: access.membershipRole === "OWNER" },
+      },
+      tx,
+    );
   });
 }

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { and, eq, isNull } from "drizzle-orm";
 import { format } from "date-fns";
-import { ChevronLeft, ExternalLink } from "lucide-react";
+import { ChevronLeft, ExternalLink, Users } from "lucide-react";
 import { PageHeader, StatTile } from "@/components/page-header";
 import { ButtonLink } from "@/components/button-link";
 import { RoleBadge } from "@/components/role-badge";
@@ -56,9 +56,14 @@ export default async function AdminCommunityPage({ params }: { params: Promise<{
           actions={
             <>
               {global.overridesCommunities(user.globalRole) ? (
-                <ButtonLink href={`/c/${community.slug}`} variant="outline">
-                  Open portal <ExternalLink data-icon="inline-end" />
-                </ButtonLink>
+                <>
+                  <ButtonLink href={`/c/${community.slug}/members`}>
+                    <Users /> Manage people &amp; invites
+                  </ButtonLink>
+                  <ButtonLink href={`/c/${community.slug}`} variant="outline">
+                    Open portal <ExternalLink data-icon="inline-end" />
+                  </ButtonLink>
+                </>
               ) : null}
               <CommunityControls
                 id={community.id}
@@ -100,7 +105,7 @@ export default async function AdminCommunityPage({ params }: { params: Promise<{
           <ul className="divide-y divide-border rounded-2xl bg-card shadow-card ring-1 ring-foreground/5">
             {members.filter((m) => m.role !== "MEMBER").length === 0 ? (
               <li className="px-4 py-6 text-center text-sm text-muted-foreground">
-                The owner hasn&rsquo;t accepted their invite yet.
+                The Community Lead hasn&rsquo;t accepted their invite yet. You can resend it from Manage people &amp; invites.
               </li>
             ) : null}
             {members

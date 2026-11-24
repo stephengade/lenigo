@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash, randomBytes } from "node:crypto";
-import { and, desc, eq, gt, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import { createClient } from "@supabase/supabase-js";
 import { db } from "@/server/db";
 import {
@@ -83,7 +83,7 @@ export async function insertInvite(
     spaceRole: SpaceRole | null;
     label: string;
   } & CreateInviteInput,
-  tx: Pick<typeof db, "insert"> = db,
+  tx: Pick<typeof db, "insert" | "update"> = db,
 ): Promise<CreatedInvite> {
   const token = newToken();
   const email = v.email?.trim().toLowerCase() || null;
@@ -120,6 +120,7 @@ export async function insertInvite(
   const url = inviteUrl(token);
   if (email && v.sendEmail !== false) {
     const res = await sendInviteEmail(email, token);
+    if (res.ok) await tx.update(invites).set({ lastSentAt: new Date() }).where(eq(invites.id, row.id));
     return { id: row.id, url, emailed: res.ok, emailError: res.error };
   }
   return { id: row.id, url, emailed: false };
@@ -159,6 +160,8 @@ export async function listActiveInvites(scope: { communityId: string; spaceId?: 
       createdAt: invites.createdAt,
       createdBy: users.name,
       createdByEmail: users.email,
+      lastSentAt: invites.lastSentAt,
+      expired: sql<boolean>`${invites.expiresAt} <= now()`,
     })
     .from(invites)
     .leftJoin(users, eq(users.id, invites.createdById))
@@ -167,14 +170,27 @@ export async function listActiveInvites(scope: { communityId: string; spaceId?: 
         eq(invites.communityId, scope.communityId),
         scope.spaceId ? eq(invites.spaceId, scope.spaceId) : isNull(invites.spaceId),
         isNull(invites.revokedAt),
-        gt(invites.expiresAt, new Date()),
         or(isNull(invites.maxUses), sql`${invites.uses} < ${invites.maxUses}`),
+        // Live invites, plus email invites that expired in the last 30 days (so they can be resent).
+        or(gt(invites.expiresAt, new Date()), and(isNotNull(invites.email), gt(invites.expiresAt, new Date(Date.now() - 30 * 86_400_000)))),
       ),
     )
     .orderBy(desc(invites.createdAt));
 }
 
-export async function revokeInvite(actor: User, scope: { communityId: string; spaceId?: string | null }, inviteId: string) {
+export async function revokeInvite(
+  actor: User,
+  scope: { communityId: string; spaceId?: string | null },
+  inviteId: string,
+  /** Only someone who could create an invite with this role may cancel it. */
+  canInvite: (role: CommunityRole | SpaceRole) => boolean,
+) {
+  const [inv] = await db
+    .select({ communityRole: invites.communityRole, spaceRole: invites.spaceRole })
+    .from(invites)
+    .where(and(eq(invites.id, inviteId), eq(invites.communityId, scope.communityId)))
+    .limit(1);
+  if (inv && !canInvite((inv.spaceRole ?? inv.communityRole)!)) throw fail.forbidden("You can't cancel invites for this role.");
   const [row] = await db
     .update(invites)
     .set({ revokedAt: new Date() })
@@ -196,6 +212,65 @@ export async function revokeInvite(actor: User, scope: { communityId: string; sp
     entityType: "invite",
     entityId: inviteId,
   });
+}
+
+const RESEND_COOLDOWN_MS = 2 * 60_000;
+
+/**
+ * Resend an email invite: a fresh link (the old one stops working: tokens are stored hashed,
+ * so the original can't be re-sent), a new 14-day expiry and a new sign-in code.
+ * `canInvite` is the caller's rule for the invite's role, so only someone who could create
+ * this invite can resend it. Rate-limited per invite.
+ */
+export async function resendInvite(
+  actor: User,
+  scope: { communityId: string; spaceId?: string | null },
+  inviteId: string,
+  canInvite: (role: CommunityRole | SpaceRole) => boolean,
+): Promise<CreatedInvite> {
+  const token = newToken();
+  const email = await db.transaction(async (tx) => {
+    const [inv] = await tx
+      .select()
+      .from(invites)
+      .where(
+        and(
+          eq(invites.id, inviteId),
+          eq(invites.communityId, scope.communityId),
+          scope.spaceId ? eq(invites.spaceId, scope.spaceId) : isNull(invites.spaceId),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!inv) throw fail.notFound("Invite not found");
+    if (!inv.email) throw fail.badRequest("Only email invites can be resent. Copy a shareable link instead.");
+    if (inv.revokedAt) throw fail.gone("This invite was revoked. Send a new one.");
+    if (inv.maxUses !== null && inv.uses >= inv.maxUses) throw fail.gone("This invite has already been accepted.");
+    if (!canInvite((inv.spaceRole ?? inv.communityRole)!)) throw fail.forbidden("You can't invite people with this role.");
+    if (inv.lastSentAt && Date.now() - inv.lastSentAt.getTime() < RESEND_COOLDOWN_MS) {
+      throw fail.tooMany("This invite was just sent. Wait a couple of minutes before resending.");
+    }
+    await tx
+      .update(invites)
+      .set({ tokenHash: hashToken(token), expiresAt: new Date(Date.now() + 14 * 86_400_000), lastSentAt: new Date() })
+      .where(eq(invites.id, inv.id));
+    await logActivity(
+      {
+        actorUserId: actor.id,
+        actionType: "INVITE_RESENT",
+        communityId: scope.communityId,
+        spaceId: scope.spaceId ?? null,
+        entityType: "invite",
+        entityId: inv.id,
+        metadata: { email: inv.email },
+      },
+      tx,
+    );
+    return inv.email;
+  });
+  // Sent after commit, so a rolled-back resend never emails a link that doesn't work.
+  const res = await sendInviteEmail(email, token);
+  return { id: inviteId, url: inviteUrl(token), emailed: res.ok, emailError: res.error };
 }
 
 /* ── Preview & redeem ──────────────────────────────────────────────── */

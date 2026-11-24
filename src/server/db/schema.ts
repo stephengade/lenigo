@@ -115,6 +115,9 @@ export const users = pgTable(
     globalRole: globalRole("global_role").notNull().default("USER"),
     createdAt: createdAt(),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    /** Set by a Super Admin: the account can't sign in or use the API until reactivated. History is kept. */
+    deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
+    deactivatedById: uuid("deactivated_by_id"),
   },
   (t) => [
     uniqueIndex("users_email_key").on(sql`lower(${t.email})`),
@@ -224,6 +227,8 @@ export const invites = pgTable(
     uses: integer("uses").notNull().default(0),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    /** When the invite email last went out (creation or resend); resends are rate-limited on it. */
+    lastSentAt: timestamp("last_sent_at", { withTimezone: true }),
     createdById: uuid("created_by_id").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },

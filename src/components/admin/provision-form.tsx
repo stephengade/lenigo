@@ -67,7 +67,7 @@ export function ProvisionForm() {
           Spaces: {result.spaces.map((s) => `/c/${result.slug}/${s}`).join(", ")}
         </p>
         <div className="mt-5 rounded-xl border border-dashed bg-surface p-3">
-          <div className="text-xs font-medium">Owner invite for {ownerEmail}</div>
+          <div className="text-xs font-medium">Community Lead invite for {ownerEmail}</div>
           <div className="mt-2 flex items-center gap-2">
             <code className="min-w-0 flex-1 truncate font-mono text-xs">{result.ownerInviteUrl}</code>
             <Button
@@ -84,7 +84,7 @@ export function ProvisionForm() {
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
             {result.ownerAlreadyMember
-              ? "They already had an account, so they're Owner now. "
+              ? "They already had an account, so they're Community Lead now. "
               : ""}
             {result.emailed
               ? "We emailed them this invite and a sign-in code."
@@ -215,13 +215,13 @@ export function ProvisionForm() {
 
       <section className="space-y-4 rounded-2xl bg-card shadow-card ring-1 ring-foreground/5 p-6">
         <div>
-          <h2 className="font-display text-lg font-bold">Owner</h2>
+          <h2 className="font-display text-lg font-bold">Community Lead</h2>
           <p className="text-sm text-muted-foreground">
-            The community lead. They get Lead access in every space and can appoint admins, leads, managers and mentors.
+            The president. They see everything in the community, get Space Lead access in every space, and add or remove admins, space leads, managers and mentors. You can hand the role to someone else later.
           </p>
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="owner">Owner email</Label>
+          <Label htmlFor="owner">Community Lead email</Label>
           <Input id="owner" type="email" required placeholder="lead@gdg-oau.dev" value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} />
         </div>
       </section>

@@ -10,13 +10,15 @@ import {
   changeSpaceRole,
   createSpace,
   deleteCommunity,
+  handOverLead,
   joinOpenSpace,
   provisionCommunity,
+  removeCommunityMember,
   removeSpaceMember,
   setCommunityStatus,
 } from "@/server/services/communities";
-import { createCommunityInvite, createSpaceInvite, redeemInvite, redeemMyInvite, revokeInvite } from "@/server/services/invites";
-import { listActivity, setGlobalRole } from "@/server/services/admin";
+import { createCommunityInvite, createSpaceInvite, redeemInvite, redeemMyInvite, resendInvite, revokeInvite } from "@/server/services/invites";
+import { listActivity, setGlobalRole, setUserActive } from "@/server/services/admin";
 import { community as communityRules, global, space as spaceRules } from "@/lib/permissions";
 
 const json = (status: number, body: unknown) =>
@@ -155,6 +157,14 @@ export const app = new Elysia({ prefix: "/api" })
         },
         { auth: true, params: t.Object({ id: t.String({ format: "uuid" }) }), body: t.Object({ role: GlobalRoleT }) },
       )
+      .patch(
+        "/users/:id/active",
+        async ({ user, params, body }) => {
+          await setUserActive(user, params.id, body.active);
+          return { ok: true };
+        },
+        { auth: true, params: t.Object({ id: t.String({ format: "uuid" }) }), body: t.Object({ active: t.Boolean() }) },
+      )
       .get(
         "/activity",
         async ({ user, query }) => {
@@ -219,11 +229,39 @@ export const app = new Elysia({ prefix: "/api" })
         "/invites/:inviteId",
         async ({ user, params }) => {
           const access = await getCommunityAccess(user, params.community);
-          if (!communityRules.invitableRoles(access.role).length) throw fail.forbidden();
-          await revokeInvite(user, { communityId: access.community.id }, params.inviteId);
+          const roles: string[] = communityRules.invitableRoles(access.role);
+          if (!roles.length) throw fail.forbidden();
+          await revokeInvite(user, { communityId: access.community.id }, params.inviteId, (r) => roles.includes(r));
           return { ok: true };
         },
         { auth: true, params: t.Object({ community: Slug, inviteId: t.String({ format: "uuid" }) }) },
+      )
+      .post(
+        "/invites/:inviteId/resend",
+        async ({ user, params }) => {
+          const access = await getCommunityAccess(user, params.community);
+          const roles: string[] = communityRules.invitableRoles(access.role);
+          return await resendInvite(user, { communityId: access.community.id }, params.inviteId, (r) => roles.includes(r));
+        },
+        { auth: true, params: t.Object({ community: Slug, inviteId: t.String({ format: "uuid" }) }) },
+      )
+      .delete(
+        "/members/:userId",
+        async ({ user, params }) => {
+          const access = await getCommunityAccess(user, params.community);
+          await removeCommunityMember(access, params.userId);
+          return { ok: true };
+        },
+        { auth: true, params: t.Object({ community: Slug, userId: t.String({ format: "uuid" }) }) },
+      )
+      .post(
+        "/members/:userId/hand-over",
+        async ({ user, params }) => {
+          const access = await getCommunityAccess(user, params.community);
+          await handOverLead(access, params.userId);
+          return { ok: true };
+        },
+        { auth: true, params: t.Object({ community: Slug, userId: t.String({ format: "uuid" }) }) },
       )
       .patch(
         "/members/:userId",
@@ -266,8 +304,23 @@ export const app = new Elysia({ prefix: "/api" })
         "/:space/invites/:inviteId",
         async ({ user, params }) => {
           const access = await requireSpaceRole(user, params.community, params.space, spaceRules.canViewTeam);
-          await revokeInvite(user, { communityId: access.community.id, spaceId: access.space.id }, params.inviteId);
+          const roles: string[] = spaceRules.invitableRoles(access.spaceRole);
+          await revokeInvite(user, { communityId: access.community.id, spaceId: access.space.id }, params.inviteId, (r) => roles.includes(r));
           return { ok: true };
+        },
+        { auth: true, params: t.Object({ community: Slug, space: Slug, inviteId: t.String({ format: "uuid" }) }) },
+      )
+      .post(
+        "/:space/invites/:inviteId/resend",
+        async ({ user, params }) => {
+          const access = await requireSpaceRole(user, params.community, params.space);
+          const roles: string[] = spaceRules.invitableRoles(access.spaceRole);
+          return await resendInvite(
+            user,
+            { communityId: access.community.id, spaceId: access.space.id },
+            params.inviteId,
+            (r) => roles.includes(r),
+          );
         },
         { auth: true, params: t.Object({ community: Slug, space: Slug, inviteId: t.String({ format: "uuid" }) }) },
       )

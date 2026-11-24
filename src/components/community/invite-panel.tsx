@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNowStrict } from "date-fns";
-import { Check, Copy, Link2, Loader2, Mail, Trash2 } from "lucide-react";
+import { Check, Copy, Link2, Loader2, Mail, RotateCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,8 @@ export type ActiveInvite = {
   uses: number;
   maxUses: number | null;
   expiresAt: string;
+  /** Email invites stay listed for 30 days after expiring, so they can be resent. */
+  expired: boolean;
   createdBy: string | null;
 };
 
@@ -178,6 +180,9 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
 
       <div>
         <h3 className="mb-3 text-xs font-medium text-muted-foreground">Pending invites · {invites.length}</h3>
+        {invites.some((i) => i.email) ? (
+          <p className="mb-3 text-xs text-muted-foreground">Resend gives them a new link and sign-in code; the old link stops working.</p>
+        ) : null}
         {invites.length === 0 ? (
           <p className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">No pending invites.</p>
         ) : (
@@ -195,6 +200,27 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
 function InviteRow({ invite, scope }: { invite: ActiveInvite; scope: InviteScope }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const [resending, startResend] = useTransition();
+  const [fallbackUrl, setFallbackUrl] = useState<string | null>(null);
+
+  function resend() {
+    startResend(async () => {
+      const c = api.c({ community: scope.communitySlug });
+      const { data, error } =
+        scope.kind === "community"
+          ? await c.invites({ inviteId: invite.id }).resend.post()
+          : await c({ space: scope.spaceSlug }).invites({ inviteId: invite.id }).resend.post();
+      if (error) return void toast.error(apiError(error));
+      if (data.emailed) {
+        setFallbackUrl(null);
+        toast.success(`New invite sent to ${invite.email}. The old link no longer works.`);
+      } else {
+        setFallbackUrl(data.url);
+        toast.warning("The email didn't send. Copy the new link and send it yourself.");
+      }
+      router.refresh();
+    });
+  }
 
   function revoke() {
     start(async () => {
@@ -220,12 +246,33 @@ function InviteRow({ invite, scope }: { invite: ActiveInvite; scope: InviteScope
           <RoleBadge role={invite.role} />
         </div>
         <div className="text-xs text-muted-foreground">
-          {invite.email ? "Single use" : `${invite.uses}${invite.maxUses ? ` / ${invite.maxUses}` : ""} used`} · expires{" "}
-          {formatDistanceToNowStrict(new Date(invite.expiresAt), { addSuffix: true })}
+          {invite.email ? "Single use" : `${invite.uses}${invite.maxUses ? ` / ${invite.maxUses}` : ""} used`} ·{" "}
+          {invite.expired ? (
+            <span className="font-medium text-destructive">expired {formatDistanceToNowStrict(new Date(invite.expiresAt), { addSuffix: true })}</span>
+          ) : (
+            <>expires {formatDistanceToNowStrict(new Date(invite.expiresAt), { addSuffix: true })}</>
+          )}
           {invite.createdBy ? ` · by ${invite.createdBy}` : ""}
         </div>
+        {fallbackUrl ? (
+          <button
+            type="button"
+            className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary"
+            onClick={async () => {
+              await navigator.clipboard.writeText(fallbackUrl);
+              toast.success("New link copied");
+            }}
+          >
+            <Copy className="size-3" /> Copy the new link
+          </button>
+        ) : null}
       </div>
-      <Button size="icon-sm" variant="ghost" onClick={revoke} disabled={pending} aria-label="Revoke invite">
+      {invite.email ? (
+        <Button size="sm" variant="outline" onClick={resend} disabled={resending || pending} aria-label={`Resend invite to ${invite.email}`}>
+          {resending ? <Loader2 className="animate-spin" /> : <RotateCw />} Resend
+        </Button>
+      ) : null}
+      <Button size="icon-sm" variant="ghost" onClick={revoke} disabled={pending || resending} aria-label="Revoke invite">
         {pending ? <Loader2 className="animate-spin" /> : <Trash2 />}
       </Button>
     </li>

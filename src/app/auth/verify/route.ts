@@ -37,6 +37,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "That code is wrong or has expired. Check it, or send a new one." }, { status: 401 });
   }
 
-  await syncUserFromAuth(data.user, { logLogin: true });
+  const row = await syncUserFromAuth(data.user, { logLogin: true });
+  if (row.deactivatedAt) {
+    await supabase.auth.signOut();
+    return NextResponse.json({ error: "This account has been deactivated. Contact your community lead or the Lenigo team." }, { status: 403 });
+  }
   return NextResponse.json({ next });
 }

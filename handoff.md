@@ -28,6 +28,13 @@ Global House /admin                 globalRole: SUPER_ADMIN · ADMIN · VIEWER �
 - The PRD's "Community Lead / Manager / Mentor / Member" roles now live at the **space** level.
 - Community **Owner/Admin automatically act as LEAD in every space** (`spaceRoleFromCommunity`).
 - **Super Admin** gets OWNER-equivalent override in any community, with a blue banner. Plain ADMIN/VIEWER do **not** get portal access.
+- **Display names (2026-11-24):** OWNER shows as **Community Lead** (the president), LEAD as **Space Lead**. Enum values are unchanged.
+- **People management:**
+  - **Community Leads** hand the role to another member (they step down to Admin), and remove people from the community. Removing someone takes them out of every space and cancels their pending invites there; their history is kept. Admins can remove Members only.
+  - **The database keeps at least one Community Lead** (migration 0005, `lenigo_keep_one_owner`).
+  - **Resending an email invite** issues a new link (tokens are stored hashed), a new 14-day expiry and a new sign-in code. The old link stops working. Limited to once every 2 minutes per invite. Only someone who could create an invite for that role can resend or cancel it.
+  - **Super Admins deactivate or reactivate accounts** from `/admin/users`. `getSessionUser` treats a deactivated account as signed out, and the sign-in routes refuse it with a message. Nothing is deleted. Super Admins can't be deactivated.
+  - **From Global House**, each community page has "Manage people & invites", which opens `/c/<slug>/members` through the Super Admin override.
 - Spaces have `join_policy` set to `OPEN` (any community member can self-join as MEMBER) or `INVITE`.
 - Space slugs in `RESERVED_SPACE_SLUGS` (`members`, `settings`, …) are blocked so they can't collide with community-level routes.
 
@@ -115,7 +122,7 @@ drizzle/0003_phase_2_4.sql         feed_items.meta, one PENDING submission per l
 
 ## Phase 1 acceptance test (not yet run)
 
-- [ ] Super Admin signs in → `/admin` loads, LOGIN appears in `/admin/activity`.
+- [x] Super Admin signs in → `/admin` loads, LOGIN appears in `/admin/activity` (2026-11-24).
 - [ ] Provision `gdg-oau` with spaces Web Development + Data Science and an owner email → owner gets the email and the invite link is shown.
 - [ ] Owner opens the invite → becomes OWNER → sees both spaces with a LEAD badge.
 - [ ] Owner invites a Lead to `web-dev`; that Lead invites a Manager and a Mentor.
@@ -125,6 +132,10 @@ drizzle/0003_phase_2_4.sql         feed_items.meta, one PENDING submission per l
 - [ ] Single-use email invite can't be redeemed twice or by a different email.
 - [ ] Suspending a community blocks members (410 → /denied) but not Super Admin.
 - [ ] `UPDATE points_ledger …` in SQL fails with "append-only".
+- [ ] Community Lead hands over to a member → they become Lead and the old Lead becomes Admin; demoting or removing the last Lead fails.
+- [ ] Remove someone from the community → gone from every space, their pending invites cancelled; inviting them back restores their history.
+- [ ] Resend an email invite → the old link says invalid, the new one works; a second resend within 2 minutes is refused.
+- [ ] Deactivate a user → they're signed out and the sign-in code is refused with a message; reactivating restores access.
 - [ ] `UPDATE space_members SET level='ADVANCED'` without a promotion row fails; a reviewer inserting a review of their own submission fails.
 
 ## Known gaps / risks

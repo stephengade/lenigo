@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/page-header";
 import { ButtonLink } from "@/components/button-link";
 import { UserAvatar } from "@/components/user-avatar";
 import { InvitePanel } from "@/components/community/invite-panel";
-import { MemberRoleSelect } from "@/components/community/member-actions";
+import { CommunityMemberMenu, MemberRoleSelect } from "@/components/community/member-actions";
 import { pageCommunity } from "@/server/auth/guards";
 import { listCommunityMembers } from "@/server/services/communities";
 import { listActiveInvites } from "@/server/services/invites";
@@ -36,13 +36,18 @@ export default async function CommunityMembersPage({ params }: { params: Promise
         </ButtonLink>
         <PageHeader
           title="Members & invites"
-          description="Community Owners and Admins act as Lead in every space. To give someone a role in one space only, invite them from that space's Team page."
+          description="Community Leads and Admins act as Space Lead in every space. To give someone a role in one space only (Space Lead, Manager, Mentor), invite them from that space's Team page."
         />
 
         <div className="grid gap-8 lg:grid-cols-[1.4fr_1fr]">
           <section>
             <h2 className="mb-3 text-xs font-medium text-muted-foreground">Members · {members.length}</h2>
             <ul className="divide-y divide-border rounded-2xl bg-card shadow-card ring-1 ring-foreground/5">
+              {members.length === 0 ? (
+                <li className="px-4 py-8 text-center text-sm text-muted-foreground">
+                  Nobody has joined yet. People appear here once they accept an invite.
+                </li>
+              ) : null}
               {members.map((m) => (
                 <li key={m.userId} className="flex items-center gap-3 px-4 py-3">
                   <UserAvatar name={m.name} email={m.email} src={m.avatarUrl} />
@@ -66,6 +71,14 @@ export default async function CommunityMembersPage({ params }: { params: Promise
                         : COMMUNITY_ROLES.filter((to) => to !== m.role && rules.canChangeRole(access.role, m.role, to))
                     }
                   />
+                  <CommunityMemberMenu
+                    communitySlug={slug}
+                    userId={m.userId}
+                    name={m.name ?? m.email}
+                    canHandOver={m.userId !== access.user.id && m.role !== "OWNER" && rules.canHandOver(access.role)}
+                    canRemove={m.userId !== access.user.id && rules.canRemove(access.role, m.role)}
+                    viewerIsLead={access.membershipRole === "OWNER"}
+                  />
                 </li>
               ))}
             </ul>
@@ -82,6 +95,7 @@ export default async function CommunityMembersPage({ params }: { params: Promise
                 uses: i.uses,
                 maxUses: i.maxUses,
                 expiresAt: i.expiresAt.toISOString(),
+                expired: i.expired,
                 createdBy: i.createdBy ?? i.createdByEmail,
               }))}
             />

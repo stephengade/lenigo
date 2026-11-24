@@ -29,6 +29,10 @@ export async function GET(request: NextRequest) {
   const { data, error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type });
   if (error || !data.user) return back(error?.message ?? "link_expired");
 
-  await syncUserFromAuth(data.user, { logLogin: true });
+  const row = await syncUserFromAuth(data.user, { logLogin: true });
+  if (row.deactivatedAt) {
+    await supabase.auth.signOut();
+    return back("deactivated");
+  }
   return NextResponse.redirect(`${origin}${next}`);
 }

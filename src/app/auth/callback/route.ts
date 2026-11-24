@@ -19,6 +19,10 @@ export async function GET(request: NextRequest) {
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
   if (error || !data.user) return back(error?.message ?? "sign_in_failed");
 
-  await syncUserFromAuth(data.user, { logLogin: true });
+  const row = await syncUserFromAuth(data.user, { logLogin: true });
+  if (row.deactivatedAt) {
+    await supabase.auth.signOut();
+    return back("deactivated");
+  }
   return NextResponse.redirect(`${origin}${next}`);
 }

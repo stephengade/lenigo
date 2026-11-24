@@ -14,6 +14,7 @@ const ERRORS: Record<string, string> = {
   link_invalid: "That sign-in link isn't valid. Request a new one.",
   link_expired: "That sign-in link has expired. Request a new one.",
   sign_in_failed: "We couldn't sign you in. Try again.",
+  deactivated: "This account has been deactivated. Contact your community lead or the Lenigo team.",
 };
 
 /* What the left panel promises. No point values: learners see sources, never weights. */

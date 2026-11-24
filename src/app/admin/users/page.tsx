@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/page-header";
 import { UserAvatar } from "@/components/user-avatar";
 import { RoleBadge } from "@/components/role-badge";
 import { GlobalRoleSelect } from "@/components/admin/global-role-select";
+import { UserActiveToggle } from "@/components/admin/user-active-toggle";
 import { pageGlobalHouse } from "@/server/auth/guards";
 import { listUsers } from "@/server/services/admin";
 import { global } from "@/lib/permissions";
@@ -16,6 +17,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
   const { q } = await searchParams;
   const rows = await listUsers(q?.slice(0, 120));
   const canAssign = global.canAssignGlobalRoles(me.globalRole);
+  const canDeactivate = global.canDeactivateUsers(me.globalRole);
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -24,7 +26,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
         title="Users"
         description={
           canAssign
-            ? "Look up anyone on the platform and assign Global House roles. Admins provision and suspend communities; Viewers get read-only analytics."
+            ? "Look up anyone on the platform, assign Global House roles, or deactivate an account. Admins provision and suspend communities; Viewers get read-only analytics. Deactivated people can't sign in; nothing of theirs is deleted."
             : "Look up anyone on the platform. Only Super Admins can change global roles."
         }
       />
@@ -48,6 +50,9 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
               <div className="truncate text-sm font-medium">
                 {u.name ?? u.email}
                 {u.id === me.id ? <span className="ml-1.5 text-xs text-muted-foreground">(you)</span> : null}
+                {u.deactivatedAt ? (
+                  <span className="ml-2 rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">Deactivated</span>
+                ) : null}
               </div>
               <div className="truncate text-xs text-muted-foreground">
                 {u.email}
@@ -64,6 +69,9 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
               {u.communities.length > 3 ? <span className="text-[11px] text-muted-foreground">+{u.communities.length - 3}</span> : null}
             </div>
             {canAssign && u.id !== me.id ? <GlobalRoleSelect userId={u.id} role={u.globalRole} /> : <RoleBadge role={u.globalRole} />}
+            {canDeactivate && u.id !== me.id && (u.globalRole !== "SUPER_ADMIN" || u.deactivatedAt) ? (
+              <UserActiveToggle userId={u.id} name={u.name ?? u.email} deactivated={!!u.deactivatedAt} />
+            ) : null}
           </li>
         ))}
       </ul>

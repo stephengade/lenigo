@@ -2,9 +2,10 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, UserMinus } from "lucide-react";
+import { Crown, Loader2, MoreHorizontal, UserMinus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RoleBadge } from "@/components/role-badge";
 import { api, apiError } from "@/lib/api";
@@ -93,5 +94,77 @@ export function RemoveMemberButton({
     >
       {pending ? <Loader2 className="animate-spin" /> : <UserMinus />}
     </Button>
+  );
+}
+
+/**
+ * Actions on one community member: hand over the Community Lead role, or remove them from the
+ * community and all its spaces. The server re-checks every rule; this only hides what won't work.
+ */
+export function CommunityMemberMenu({
+  communitySlug,
+  userId,
+  name,
+  canHandOver,
+  canRemove,
+  viewerIsLead,
+}: {
+  communitySlug: string;
+  userId: string;
+  name: string;
+  canHandOver: boolean;
+  canRemove: boolean;
+  /** The viewer is a Community Lead by membership (a Super Admin override isn't), so handing over demotes them. */
+  viewerIsLead: boolean;
+}) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  if (!canHandOver && !canRemove) return <span className="size-8" aria-hidden />;
+
+  function handOver() {
+    const msg = viewerIsLead
+      ? `Make ${name} the Community Lead? You'll become an Admin of this community.`
+      : `Make ${name} a Community Lead?`;
+    if (!confirm(msg)) return;
+    start(async () => {
+      const { error } = await api.c({ community: communitySlug }).members({ userId })["hand-over"].post();
+      if (error) return void toast.error(apiError(error));
+      toast.success(`${name} is now Community Lead`);
+      router.refresh();
+    });
+  }
+
+  function remove() {
+    if (!confirm(`Remove ${name} from this community and all its spaces? Their pending invites here are cancelled. Their learning history is kept if they're invited back.`)) return;
+    start(async () => {
+      const { error } = await api.c({ community: communitySlug }).members({ userId }).delete();
+      if (error) return void toast.error(apiError(error));
+      toast.success(`${name} removed from the community`);
+      router.refresh();
+    });
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className="grid size-8 place-items-center rounded-full text-muted-foreground outline-none hover:bg-surface hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+        aria-label={`Actions for ${name}`}
+        disabled={pending}
+      >
+        {pending ? <Loader2 className="size-4 animate-spin" /> : <MoreHorizontal className="size-4" />}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        {canHandOver ? (
+          <DropdownMenuItem onClick={handOver}>
+            <Crown /> Make Community Lead
+          </DropdownMenuItem>
+        ) : null}
+        {canRemove ? (
+          <DropdownMenuItem variant="destructive" onClick={remove}>
+            <UserMinus /> Remove from community
+          </DropdownMenuItem>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
