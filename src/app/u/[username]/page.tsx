@@ -14,7 +14,7 @@ import { getPublicProfile } from "@/server/services/profiles";
 export async function generateMetadata({ params }: { params: Promise<{ username: string }> }) {
   const { username } = await params;
   const p = await getPublicProfile(username);
-  return { title: p ? `${p.user.name ?? p.user.username} on Lenigo` : "Profile not found", robots: { index: false } };
+  return { title: p ? { absolute: `${p.user.name ?? p.user.username} on Lenigo` } : "Profile not found", robots: { index: false } };
 }
 
 export default async function ProfilePage({ params }: { params: Promise<{ username: string }> }) {
@@ -40,23 +40,27 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
       </header>
 
       <main className="mx-auto max-w-4xl space-y-6 px-4 pb-16 sm:px-6">
-        <section className="flex flex-wrap items-center gap-5 rounded-3xl bg-sun-soft p-6 sm:p-8">
-          <UserAvatar name={user.name} src={user.avatarUrl} className="size-20 text-xl" />
-          <div className="min-w-0 flex-1">
-            <h1 className="font-display text-3xl leading-[0.95] font-black tracking-tight uppercase sm:text-4xl">{user.name ?? user.username}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              @{user.username} · learning on Lenigo since {format(user.createdAt, "MMMM yyyy")}
-              {user.githubUsername ? (
-                <>
-                  {" · "}
-                  <a href={`https://github.com/${encodeURIComponent(user.githubUsername)}`} target="_blank" rel="noopener noreferrer" className="font-medium text-foreground hover:underline">
-                    GitHub
-                  </a>
-                </>
-              ) : null}
-            </p>
-            {user.bio ? <p className="mt-3 max-w-xl text-pretty">{user.bio}</p> : null}
+        <section className="flex flex-col gap-5 rounded-3xl bg-sun-soft p-5 sm:flex-row sm:items-center sm:p-8">
+          {/* Phones: avatar and name on one row, bio and the edit button below. Wider: one row. */}
+          <div className="flex min-w-0 flex-1 items-center gap-4 sm:gap-5">
+            <UserAvatar name={user.name} src={user.avatarUrl} className="size-16 shrink-0 text-lg sm:size-20 sm:text-xl" />
+            <div className="min-w-0 flex-1">
+              <h1 className="font-display text-2xl leading-[0.95] font-black tracking-tight break-words uppercase sm:text-4xl">{user.name ?? user.username}</h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                <span className="break-all">@{user.username}</span> · learning on Lenigo since {format(user.createdAt, "MMMM yyyy")}
+                {user.githubUsername ? (
+                  <>
+                    {" · "}
+                    <a href={`https://github.com/${encodeURIComponent(user.githubUsername)}`} target="_blank" rel="noopener noreferrer" className="font-medium text-foreground hover:underline">
+                      GitHub
+                    </a>
+                  </>
+                ) : null}
+              </p>
+              {user.bio ? <p className="mt-3 hidden max-w-xl text-pretty break-words sm:block">{user.bio}</p> : null}
+            </div>
           </div>
+          {user.bio ? <p className="text-pretty break-words sm:hidden">{user.bio}</p> : null}
           {isMe && user.username ? <EditProfileDialog profile={{ name: user.name, username: user.username, bio: user.bio, emailNotifications: viewer!.emailNotifications }} /> : null}
         </section>
 

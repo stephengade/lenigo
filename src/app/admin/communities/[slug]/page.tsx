@@ -9,6 +9,7 @@ import { UserAvatar } from "@/components/user-avatar";
 import { ActivityList } from "@/components/admin/activity-list";
 import { CommunityControls } from "@/components/admin/community-controls";
 import { pageGlobalHouse } from "@/server/auth/guards";
+import { getSessionUser } from "@/server/auth/session";
 import { db } from "@/server/db";
 import { communities, spaces } from "@/server/db/schema";
 import { communityLeadersSummary, listCommunityHealth } from "@/server/services/communities";
@@ -16,7 +17,10 @@ import { listActivity } from "@/server/services/admin";
 import { global } from "@/lib/permissions";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
-  return { title: (await params).slug };
+  const user = await getSessionUser();
+  if (!user || !global.canEnterHouse(user.globalRole)) return { title: "Community" };
+  const [c] = await db.select({ name: communities.name }).from(communities).where(eq(communities.slug, (await params).slug)).limit(1);
+  return { title: c?.name ?? "Community" };
 }
 
 export default async function AdminCommunityPage({ params }: { params: Promise<{ slug: string }> }) {

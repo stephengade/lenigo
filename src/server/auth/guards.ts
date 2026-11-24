@@ -1,6 +1,6 @@
 import "server-only";
 import { notFound, redirect } from "next/navigation";
-import { requireUser } from "@/server/auth/session";
+import { getSessionUser, requireUser } from "@/server/auth/session";
 import { AppError, getCommunityAccess, getSpaceAccess } from "@/server/auth/access";
 import { global } from "@/lib/permissions";
 import type { SpaceRole } from "@/lib/permissions";
@@ -16,6 +16,25 @@ export async function guard<T>(fn: () => Promise<T>): Promise<T> {
       redirect(`/denied?reason=${encodeURIComponent(e.message)}`);
     }
     throw e;
+  }
+}
+
+/**
+ * Names for page titles. Same access rules as the pages, but never redirects: someone without
+ * access gets null (and a generic title), so a title can't reveal a community they can't open.
+ */
+export async function titleNames(communitySlug: string, spaceSlug?: string) {
+  const user = await getSessionUser();
+  if (!user) return null;
+  try {
+    if (spaceSlug) {
+      const a = await getSpaceAccess(user, communitySlug, spaceSlug);
+      return { community: a.community.name, space: a.space.name };
+    }
+    const a = await getCommunityAccess(user, communitySlug);
+    return { community: a.community.name, space: null };
+  } catch {
+    return null;
   }
 }
 

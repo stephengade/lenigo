@@ -4,12 +4,15 @@ import { TopBar } from "@/components/shell/top-bar";
 import { SpaceNav } from "@/components/shell/space-nav";
 import { RoleBadge } from "@/components/role-badge";
 import { JoinSpaceButton } from "@/components/community/join-space-button";
-import { pageSpace } from "@/server/auth/guards";
+import { pageSpace, titleNames } from "@/server/auth/guards";
 import { getCommunityHub } from "@/server/services/communities";
 
 export async function generateMetadata({ params }: { params: Promise<{ community: string; space: string }> }) {
   const { community, space } = await params;
-  return { title: { template: `%s · ${space} · ${community}`, default: `${space} · ${community}` } };
+  const n = await titleNames(community, space);
+  if (!n) return {}; // no access: keep the site's generic title
+  const place = `${n.space} · ${n.community}`;
+  return { title: { template: `%s · ${place}`, default: place } };
 }
 
 export default async function SpaceLayout({
