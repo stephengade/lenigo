@@ -4,11 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/check-migrations.mjs && next build",
     "start": "next start",
     "lint": "eslint",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:status": "node --env-file-if-exists=.env scripts/check-migrations.mjs --always",
     "db:seed": "tsx src/server/db/seed.ts",
     "typecheck": "tsc --noEmit",
     "db:push": "drizzle-kit push",
