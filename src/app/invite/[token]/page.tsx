@@ -12,7 +12,7 @@ import { AcceptInvite } from "./accept-invite";
 import { LoginForm } from "@/app/login/login-form";
 import { ROLE_BLURB } from "@/lib/role-copy";
 
-export const metadata = { title: "You're invited", referrer: "no-referrer" as const };
+export const metadata = { title: "You're invited", referrer: "same-origin" as const };
 
 const ERRORS: Record<string, string> = {
   link_used: "That button has already been used or replaced by a newer invite email. Sign in with a code below instead.",

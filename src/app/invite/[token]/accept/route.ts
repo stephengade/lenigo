@@ -26,7 +26,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const page = (error?: string) =>
     NextResponse.redirect(`${origin}/invite/${encodeURIComponent(token)}${error ? `?error=${error}` : ""}`, 303);
 
-  if (request.headers.get("origin") !== origin) return NextResponse.json({ error: "Bad origin." }, { status: 403 });
+  // Only our own page may post here. Browsers mark that with Sec-Fetch-Site: same-origin; Origin is a
+  // fallback for older ones (a strict referrer policy can turn Origin into "null", so it isn't enough alone).
+  const site = request.headers.get("sec-fetch-site");
+  const sameOrigin = site ? site === "same-origin" : request.headers.get("origin") === origin;
+  if (!sameOrigin) return NextResponse.json({ error: "Bad origin." }, { status: 403 });
   if (!env.SUPABASE_SECRET_KEY) return page("one_click_off");
   if (await getSessionUser()) return page(); // already signed in: the page's own Accept button applies
 
