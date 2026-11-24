@@ -14,10 +14,11 @@ const ERRORS: Record<string, string> = {
   sign_in_failed: "We couldn't sign you in. Try again.",
 };
 
-const POINTS = [
-  ["+10", "daily standup"],
-  ["+25", "quiz passed"],
-  ["+100", "project approved"],
+/* What the left panel promises. No point values: learners see sources, never weights. */
+const HIGHLIGHTS = [
+  { label: "Roadmaps", tone: "bg-lilac" },
+  { label: "Mentor reviews", tone: "bg-mint" },
+  { label: "Daily standups", tone: "bg-rose" },
 ] as const;
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string; error?: string }> }) {
@@ -27,21 +28,24 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
 
   return (
     <main className="grid min-h-dvh lg:grid-cols-[1.1fr_1fr]">
-      <section className="relative hidden overflow-hidden bg-ink p-10 text-ink-foreground lg:flex lg:flex-col">
-        <div className="pointer-events-none absolute -right-24 -bottom-24 size-[28rem] rounded-full bg-ember/25 blur-3xl" />
-        <Logo tone="light" className="relative" />
-        <div className="relative mt-auto max-w-md space-y-6">
-          <p className="font-display text-5xl leading-[1.02] font-bold text-balance">
-            Tutorials end. <span className="text-ember">Streaks</span> don&rsquo;t.
+      <section className="relative m-3 hidden overflow-hidden rounded-[2rem] bg-sun-soft p-10 lg:flex lg:flex-col">
+        <div className="pointer-events-none absolute inset-0 bg-paper-dots opacity-60" />
+        <Logo className="relative" />
+        <div className="relative mt-auto max-w-lg">
+          <p className="font-display text-6xl leading-[0.92] font-black tracking-tight text-balance text-ink uppercase">
+            Learn it.
+            <br />
+            Build it.
+            <br />
+            <span className="mt-2 inline-block -rotate-2 rounded-3xl bg-primary px-5 pt-1 pb-2 text-primary-foreground shadow-pop">Ship it.</span>
           </p>
-          <p className="text-ink-foreground/70">
-            Pick a roadmap, ship a project every module, check in daily, and get real reviews from mentors in your community.
+          <p className="mt-8 text-lg text-muted-foreground">
+            Follow a roadmap, ship a project every module, check in daily and get real reviews from mentors in your community.
           </p>
-          <ul className="grid grid-cols-3 gap-3 pt-4">
-            {POINTS.map(([n, l]) => (
-              <li key={l} className="rounded-xl border border-white/10 bg-white/5 p-3">
-                <div className="font-display text-2xl font-bold text-ember">{n}</div>
-                <div className="mt-1 font-mono text-[10px] tracking-wider text-ink-foreground/60 uppercase">{l}</div>
+          <ul className="mt-6 flex flex-wrap gap-2">
+            {HIGHLIGHTS.map((h) => (
+              <li key={h.label} className="inline-flex items-center gap-2 rounded-full bg-card px-4 py-2 text-sm font-semibold shadow-xs">
+                <span className={`size-2 rounded-full ${h.tone}`} /> {h.label}
               </li>
             ))}
           </ul>
@@ -51,10 +55,10 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       <section className="flex flex-col p-6 sm:p-10">
         <Logo className="lg:hidden" />
         <div className="m-auto w-full max-w-sm py-10">
-          <h1 className="text-3xl font-bold">Sign in to Lenigo</h1>
-          <p className="mt-2 text-sm text-muted-foreground">New here? Open your invite link — it signs you up and drops you into your community.</p>
+          <h1 className="font-display text-4xl leading-[0.95] font-black tracking-tight uppercase">Sign in</h1>
+          <p className="mt-3 text-muted-foreground">New here? Open your invite link. It signs you up and drops you straight into your community.</p>
           {error ? (
-            <p role="alert" className="mt-6 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            <p role="alert" className="mt-6 rounded-2xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
               {ERRORS[error] ?? error}
             </p>
           ) : null}

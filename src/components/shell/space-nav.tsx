@@ -45,24 +45,24 @@ export function SpaceNav({ base, role, row }: { base: string; role: SpaceRole; r
         href={href}
         aria-current={active ? "page" : undefined}
         className={cn(
-          "group flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm whitespace-nowrap transition-colors",
-          active ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground" : "text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+          "group flex items-center gap-2.5 rounded-full px-3.5 py-2 text-sm font-medium whitespace-nowrap transition-colors outline-none focus-visible:ring-4 focus-visible:ring-ring/25",
+          active ? "bg-ink text-ink-foreground" : "text-muted-foreground hover:bg-card hover:text-foreground",
         )}
       >
-        <i.icon className={cn("size-4", active ? "text-ember" : "text-muted-foreground group-hover:text-foreground")} />
+        <i.icon className={cn("size-4", active ? "text-ink-foreground" : "text-muted-foreground group-hover:text-foreground")} />
         <span className="flex-1">{i.label}</span>
-        {i.phase && !row ? <span className="font-mono text-[9px] text-muted-foreground/70">soon</span> : null}
+        {i.phase && !row ? <span className={cn("rounded-full px-1.5 text-[10px]", active ? "bg-ink-foreground/15" : "bg-surface text-muted-foreground")}>soon</span> : null}
       </Link>
     );
   };
 
   return (
-    <nav className={cn("flex gap-0.5", row ? "flex-row" : "flex-col")} aria-label="Space">
+    <nav className={cn("flex gap-1", row ? "flex-row" : "flex-col")} aria-label="Space">
       {ITEMS.filter((i) => i.show(role)).map(link)}
       {row ? staff.map(link) : null}
       {!row && staff.length ? (
         <>
-          <div className="mt-5 mb-1.5 px-2.5 font-mono text-[10px] tracking-wider text-muted-foreground uppercase">Team tools</div>
+          <div className="mt-5 mb-1 px-3.5 text-xs font-semibold text-muted-foreground">Team tools</div>
           {staff.map(link)}
         </>
       ) : null}

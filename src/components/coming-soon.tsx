@@ -1,5 +1,5 @@
 import { Sparkles } from "lucide-react";
-import { PageHeader } from "@/components/page-header";
+import { PageHeader, Panel } from "@/components/page-header";
 
 export function ComingSoon({
   title,
@@ -14,19 +14,24 @@ export function ComingSoon({
 }) {
   return (
     <div>
-      <PageHeader eyebrow={`Phase ${phase}`} title={title} description={description} />
-      <div className="rounded-2xl border border-dashed bg-card/50 p-6">
-        <div className="flex items-center gap-2 text-sm font-medium">
-          <Sparkles className="size-4 text-ember" /> On the way
+      <PageHeader eyebrow={`Coming in phase ${phase}`} title={title} description={description} />
+      <Panel>
+        <div className="rounded-2xl bg-card p-5 shadow-card">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <span className="grid size-8 place-items-center rounded-xl bg-sun-soft text-sun-foreground">
+              <Sparkles className="size-4" />
+            </span>
+            On the way
+          </div>
+          <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+            {bullets.map((b) => (
+              <li key={b} className="rounded-xl bg-surface px-4 py-3 text-sm text-muted-foreground">
+                {b}
+              </li>
+            ))}
+          </ul>
         </div>
-        <ul className="mt-4 grid gap-2 sm:grid-cols-2">
-          {bullets.map((b) => (
-            <li key={b} className="rounded-lg border bg-background px-3 py-2 text-sm text-muted-foreground">
-              {b}
-            </li>
-          ))}
-        </ul>
-      </div>
+      </Panel>
     </div>
   );
 }

@@ -124,6 +124,6 @@ Errors are JSON `{ error: string }` with a meaningful status (401/403/404/409/41
 ## Phase status
 
 - [x] **Phase 1:** schema (all phases), Supabase auth (GitHub + magic link), Global House (overview, provisioning, health, activity stream, users and global roles), community → space hierarchy, role-scoped invites (email and shareable links), team management, RBAC, audit log, append-only ledger triggers. Schema also carries the learning rules (earned levels, checkpoints, capstones, mentor scoring); see handoff.md → Learning rules.
-- [ ] **Phase 2:** curriculum CMS, roadmap, module workspace (server-verified video progress, checkpoint assessments, capstone projects), mentor scoring, level promotions, sequential unlocking.
+- [ ] **Phase 2:** curriculum CMS, roadmap, module workspace (server-verified video progress, checkpoint assessments, capstone projects), mentor scoring, tracks with per-track levels, onboarding questions + optional placement test, level promotions, sequential unlocking.
 - [ ] **Phase 3:** standups, feed with reactions and comments, review queue, streak engine, points ledger, leaderboards.
 - [ ] **Phase 4:** workshops, RSVP with live-review queue, public profiles `/u/[username]`.

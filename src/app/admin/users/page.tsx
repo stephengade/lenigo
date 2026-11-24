@@ -35,11 +35,11 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
           name="q"
           defaultValue={q ?? ""}
           placeholder="Search by email, name or GitHub handle"
-          className="h-10 w-full rounded-xl border bg-card pr-3 pl-9 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="h-11 w-full rounded-full border border-input bg-card pr-4 pl-10 text-sm shadow-xs outline-none focus-visible:border-primary focus-visible:ring-4 focus-visible:ring-ring/15"
         />
       </form>
 
-      <ul className="divide-y rounded-2xl border bg-card">
+      <ul className="divide-y divide-border rounded-2xl bg-card shadow-card ring-1 ring-foreground/5">
         {rows.length === 0 ? <li className="px-4 py-10 text-center text-sm text-muted-foreground">No users found.</li> : null}
         {rows.map((u) => (
           <li key={u.id} className="flex flex-wrap items-center gap-3 px-4 py-3 sm:flex-nowrap">
@@ -57,11 +57,11 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
             </div>
             <div className="hidden max-w-56 flex-wrap justify-end gap-1 md:flex">
               {u.communities.slice(0, 3).map((slug) => (
-                <Link key={slug} href={`/admin/communities/${slug}`} className="rounded-md border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground hover:text-foreground">
+                <Link key={slug} href={`/admin/communities/${slug}`} className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:text-foreground">
                   {slug}
                 </Link>
               ))}
-              {u.communities.length > 3 ? <span className="font-mono text-[10px] text-muted-foreground">+{u.communities.length - 3}</span> : null}
+              {u.communities.length > 3 ? <span className="text-[11px] text-muted-foreground">+{u.communities.length - 3}</span> : null}
             </div>
             {canAssign && u.id !== me.id ? <GlobalRoleSelect userId={u.id} role={u.globalRole} /> : <RoleBadge role={u.globalRole} />}
           </li>

@@ -14,7 +14,7 @@ export default async function Page({ params }: { params: Promise<{ community: st
       description="Pending project submissions waiting for a mentor."
       bullets={[
         "Open repo and live links side by side",
-        "Approve (+100 pts) or request revision",
+        "Approve and score, or request changes",
         "Written feedback the learner sees",
         "Turnaround time tracking",
       ]}

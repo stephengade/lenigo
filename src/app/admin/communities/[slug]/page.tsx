@@ -82,8 +82,8 @@ export default async function AdminCommunityPage({ params }: { params: Promise<{
 
       <div className="grid gap-8 lg:grid-cols-2">
         <section>
-          <h2 className="mb-3 text-lg font-bold">Spaces</h2>
-          <ul className="divide-y rounded-2xl border bg-card">
+          <h2 className="mb-3 font-display text-2xl font-black tracking-tight uppercase">Spaces</h2>
+          <ul className="divide-y divide-border rounded-2xl bg-card shadow-card ring-1 ring-foreground/5">
             {spaceRows.map((s) => (
               <li key={s.id} className="flex items-center justify-between gap-3 px-4 py-3">
                 <div className="min-w-0">
@@ -96,8 +96,8 @@ export default async function AdminCommunityPage({ params }: { params: Promise<{
             ))}
           </ul>
 
-          <h2 className="mt-8 mb-3 text-lg font-bold">People with community roles</h2>
-          <ul className="divide-y rounded-2xl border bg-card">
+          <h2 className="mt-8 mb-3 font-display text-2xl font-black tracking-tight uppercase">People with community roles</h2>
+          <ul className="divide-y divide-border rounded-2xl bg-card shadow-card ring-1 ring-foreground/5">
             {members.filter((m) => m.role !== "MEMBER").length === 0 ? (
               <li className="px-4 py-6 text-center text-sm text-muted-foreground">
                 The owner hasn&rsquo;t accepted their invite yet.
@@ -119,7 +119,7 @@ export default async function AdminCommunityPage({ params }: { params: Promise<{
         </section>
 
         <section>
-          <h2 className="mb-3 text-lg font-bold">Recent activity</h2>
+          <h2 className="mb-3 font-display text-2xl font-black tracking-tight uppercase">Recent activity</h2>
           <ActivityList items={activity.items} compact />
         </section>
       </div>

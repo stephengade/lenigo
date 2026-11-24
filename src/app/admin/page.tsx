@@ -1,5 +1,5 @@
-import { ArrowRight, Plus } from "lucide-react";
-import { PageHeader, StatTile } from "@/components/page-header";
+import { Activity, ArrowRight, Building2, Plus, UserRound, Zap } from "lucide-react";
+import { PageHeader, Panel, StatTile } from "@/components/page-header";
 import { ButtonLink } from "@/components/button-link";
 import { HealthTable } from "@/components/admin/health-table";
 import { ActivityList } from "@/components/admin/activity-list";
@@ -35,20 +35,27 @@ export default async function AdminOverview() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatTile label="Communities" value={totals.communities} />
-        <StatTile label="Users" value={totals.users} />
-        <StatTile label="Weekly active learners" value={totals.weeklyActive} accent hint="Earned points in the last 7 days" />
-        <div className="rounded-xl border bg-card p-4">
-          <div className="font-mono text-[11px] tracking-wider text-muted-foreground uppercase">Events · 7 days</div>
-          <div className="mt-2 font-display text-3xl font-bold tabular">{totals.events7d}</div>
-          <div className="mt-2 flex h-8 items-end gap-0.5" aria-label="Activity per day, last 14 days">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile icon={<Building2 />} tone="lilac" label="Communities" value={totals.communities} />
+        <StatTile icon={<UserRound />} tone="mint" label="Users" value={totals.users} />
+        <StatTile icon={<Zap />} tone="sun" label="Weekly active learners" value={totals.weeklyActive} hint="Earned points in the last 7 days" />
+        <div className="rounded-2xl bg-card p-5 shadow-card ring-1 ring-foreground/5">
+          <div className="flex items-center gap-4">
+            <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-rose-soft text-rose-foreground">
+              <Activity className="size-5" />
+            </span>
+            <div>
+              <div className="text-sm text-muted-foreground">Events, last 7 days</div>
+              <div className="mt-1 font-display text-3xl leading-none font-bold tabular">{totals.events7d}</div>
+            </div>
+          </div>
+          <div className="mt-4 flex h-10 items-end gap-1" aria-label="Activity per day, last 14 days">
             {byDay.map((d) => (
               <div
                 key={d.day}
                 title={`${d.day}: ${d.n}`}
-                className="flex-1 rounded-sm bg-ember/80"
-                style={{ height: `${Math.max(6, (d.n / peak) * 100)}%`, opacity: d.n ? 1 : 0.25 }}
+                className="flex-1 rounded-full bg-primary"
+                style={{ height: `${Math.max(10, (d.n / peak) * 100)}%`, opacity: d.n ? 1 : 0.2 }}
               />
             ))}
           </div>
@@ -57,26 +64,32 @@ export default async function AdminOverview() {
 
       <section>
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-bold">Community health</h2>
+          <h2 className="font-display text-2xl font-black tracking-tight uppercase">Community health</h2>
           <ButtonLink href="/admin/communities" variant="ghost" size="sm">
             All communities <ArrowRight data-icon="inline-end" />
           </ButtonLink>
         </div>
         {health.length ? (
-          <HealthTable rows={health} />
+          <Panel>
+            <HealthTable rows={health} />
+          </Panel>
         ) : (
-          <p className="rounded-2xl border border-dashed px-4 py-10 text-center text-sm text-muted-foreground">No communities yet.</p>
+          <Panel>
+            <p className="rounded-2xl border border-dashed border-border bg-card/60 px-4 py-10 text-center text-sm text-muted-foreground">No communities yet.</p>
+          </Panel>
         )}
       </section>
 
       <section>
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-bold">Latest activity</h2>
+          <h2 className="font-display text-2xl font-black tracking-tight uppercase">Latest activity</h2>
           <ButtonLink href="/admin/activity" variant="ghost" size="sm">
             Full stream <ArrowRight data-icon="inline-end" />
           </ButtonLink>
         </div>
-        <ActivityList items={recent.items} compact />
+        <Panel>
+          <ActivityList items={recent.items} compact />
+        </Panel>
       </section>
     </div>
   );

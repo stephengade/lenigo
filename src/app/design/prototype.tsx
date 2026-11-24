@@ -17,7 +17,9 @@ import {
   Rocket,
   Clock,
   Flame,
+  GitBranch,
   Lock,
+  Timer,
   Moon,
   Search,
   SlidersHorizontal,
@@ -30,6 +32,7 @@ import {
 } from "lucide-react";
 import { LogoMark } from "@/components/brand/logo";
 import { MODULE_REQUIREMENTS } from "@/lib/permissions";
+import { INTAKE_QUESTIONS, PLACEMENT } from "@/lib/placement";
 import { POINT_SOURCES } from "@/lib/points";
 import { cn } from "@/lib/utils";
 
@@ -228,12 +231,12 @@ export function Prototype() {
                 </div>
               )}
             </div>
-            {/* Level is read-only for learners: it only changes when a Mentor or Lead promotes them. */}
-            <div className="ml-auto flex items-center gap-2 text-sm text-muted-foreground" title="Your mentor promotes you when you're ready">
-              <span className="hidden sm:inline">Your level</span>
-              <Chip tone="ink">Beginner</Chip>
-              <Chip><Lock /> Intermediate</Chip>
-              <Chip><Lock /> Advanced</Chip>
+            {/* Track + level are read-only for learners. Level names come from the space (levels.title). */}
+            <div className="ml-auto flex flex-wrap items-center gap-2 text-sm text-muted-foreground" title="Your mentor promotes you when you're ready">
+              <span className="hidden sm:inline">Frontend track</span>
+              <Chip tone="ink">HTML, CSS &amp; JS</Chip>
+              <Chip><Lock /> Frameworks</Chip>
+              <Chip><Lock /> Production</Chip>
             </div>
           </div>
 
@@ -266,6 +269,13 @@ export function Prototype() {
           <ModuleProgress />
           <HowPointsWork />
           <ReviewCard />
+        </div>
+
+        {/* ── Joining: track pick, placement test, branch choice ─── */}
+        <div className="mt-6 grid items-start gap-4 lg:grid-cols-3">
+          <JoinSpace />
+          <PlacementCard />
+          <BranchPicker />
         </div>
 
         {/* ── Forms + buttons ─────────────────────────────────────── */}
@@ -347,8 +357,8 @@ export function Prototype() {
 
             <h3 className="mt-8 text-lg font-bold">Type</h3>
             <div className="mt-2 space-y-1.5">
-              <p className="font-display text-5xl font-bold leading-none">Teachers 800</p>
-              <p className="font-display text-2xl font-semibold">Teachers for headings &amp; numbers</p>
+              <p className="font-display text-5xl font-black uppercase leading-none">Rubik Black</p>
+              <p className="font-display text-2xl font-semibold">Rubik for headings &amp; numbers</p>
               <p className="text-base">Inter for everything you read and click. 0123456789</p>
               <p className="text-sm text-muted-foreground">Muted helper text, 14px.</p>
             </div>
@@ -594,6 +604,169 @@ function ReviewCard() {
           <Btn>Approve &amp; score</Btn>
         </div>
         <p className="mt-3 text-xs text-muted-foreground">You can&rsquo;t review your own projects. Every review is logged.</p>
+      </div>
+    </section>
+  );
+}
+
+/* ── Joining a space ────────────────────────────────────────────────── */
+
+/** Tracks are whatever the space defines; these are GDG OAU Web Development's. */
+const TRACKS = [
+  { id: "frontend", title: "Frontend", hint: "HTML, CSS, JavaScript, then a framework", needs: null },
+  { id: "backend", title: "Backend", hint: "APIs, databases, auth", needs: null },
+  { id: "qa", title: "QA", hint: "Testing, automation, quality", needs: null },
+  { id: "fullstack", title: "Fullstack", hint: "Next.js, Supabase, Cloudinary, Cloudflare", needs: "Frontend · Frameworks" },
+];
+
+/** Onboarding: picks a starting track, never a level. */
+function JoinSpace() {
+  const [track, setTrack] = useState("frontend");
+  const [hours, setHours] = useState(8);
+  const [q0, q1, q2, q3] = INTAKE_QUESTIONS;
+  return (
+    <section className="rounded-3xl bg-sage p-3 sm:p-4">
+      <div className="rounded-2xl bg-card p-5 shadow-card">
+        <p className="text-xs font-medium text-muted-foreground">Welcome to Web Development · 1 of 2</p>
+        <h2 className="mt-1 text-xl font-bold">{q0.label}</h2>
+        <p className="mt-1 text-xs text-muted-foreground">{q0.hint}</p>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          {TRACKS.map((t) => {
+            const locked = t.needs !== null;
+            const on = track === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                disabled={locked}
+                onClick={() => setTrack(t.id)}
+                aria-pressed={on}
+                className={cn(
+                  "rounded-2xl border p-3 text-left transition-colors outline-none focus-visible:ring-4 focus-visible:ring-ring/20",
+                  on ? "border-primary bg-secondary" : "border-border hover:bg-accent",
+                  locked && "cursor-not-allowed opacity-60 hover:bg-transparent",
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold">{t.title}</span>
+                  {locked ? <Lock className="size-3.5 text-muted-foreground" /> : on && <Check className="size-4 text-primary" strokeWidth={3} />}
+                </div>
+                <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{locked ? `Needs ${t.needs}` : t.hint}</p>
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-4 grid gap-3">
+          <Field label={q1.label}>
+            <textarea rows={2} placeholder={q1.hint} className={cn(inputCls, "h-auto py-2.5")} />
+          </Field>
+          <Field label={q2.label}>
+            <input placeholder="https://github.com/…" className={inputCls} />
+          </Field>
+          <div className="grid gap-1.5">
+            <div className="flex items-center justify-between text-[13px] font-medium">
+              <span>{q3.label}</span>
+              <span className="tabular">{hours}h</span>
+            </div>
+            <input type="range" min={1} max={40} value={hours} onChange={(e) => setHours(Number(e.target.value))} className="w-full accent-[var(--primary)]" aria-label={q3.label} />
+          </div>
+        </div>
+        <Btn className="mt-5 w-full">Start at the beginning <ChevronRight /></Btn>
+        <p className="mt-2 text-center text-xs text-muted-foreground">Already know the basics? You can take a placement test next.</p>
+      </div>
+    </section>
+  );
+}
+
+/** Optional placement test. Passing only RECOMMENDS; a mentor still promotes. */
+function PlacementCard() {
+  const steps = [
+    { icon: Timer, title: "Timed quiz", body: `${PLACEMENT.quizQuestions} questions, ${PLACEMENT.quizMinutes} minutes, drawn at random` },
+    { icon: Rocket, title: "Practical task", body: "Build a small layout from a brief. Opens if you pass the quiz" },
+    { icon: UserRound, title: "Mentor review", body: "A mentor checks your work and decides whether to move you up" },
+  ];
+  return (
+    <section className="rounded-3xl bg-surface p-3 sm:p-4">
+      <div className="rounded-2xl bg-card p-5 shadow-card">
+        <div className="flex items-center gap-3">
+          <Burst tone="lilac" size={48}><ClipboardCheck /></Burst>
+          <div>
+            <h2 className="text-xl font-bold">Skip ahead?</h2>
+            <p className="text-sm text-muted-foreground">Optional placement test · Frontend</p>
+          </div>
+        </div>
+        <ol className="mt-4 grid gap-3">
+          {steps.map((st, i) => (
+            <li key={st.title} className="flex gap-3">
+              <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-secondary text-secondary-foreground"><st.icon className="size-4" /></span>
+              <div>
+                <div className="text-sm font-semibold">{i + 1}. {st.title}</div>
+                <div className="text-xs text-muted-foreground">{st.body}</div>
+              </div>
+            </li>
+          ))}
+        </ol>
+        <ul className="mt-4 grid gap-1.5 rounded-xl bg-surface p-3 text-xs text-muted-foreground">
+          <li className="flex gap-2"><Info className="mt-px size-3.5 shrink-0" />Can place you up to Frameworks. The last level needs a chat with a mentor.</li>
+          <li className="flex gap-2"><Info className="mt-px size-3.5 shrink-0" />One attempt every {PLACEMENT.retakeAfterDays} days.</li>
+          <li className="flex gap-2"><Info className="mt-px size-3.5 shrink-0" />Modules you skip are marked &ldquo;Placed out&rdquo; and don&rsquo;t earn points.</li>
+        </ul>
+        <div className="mt-5 flex gap-2">
+          <Btn variant="outline" className="flex-1">Not now</Btn>
+          <Btn className="flex-1">Start test</Btn>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const BRANCHES = [
+  { id: "react", title: "React + Next.js", body: "Server components, routing, data fetching" },
+  { id: "vue", title: "Vue + Nuxt", body: "Composition API, Nuxt routing, data fetching" },
+];
+
+/** Intermediate: shared core first, then pick one framework. */
+function BranchPicker() {
+  const [pick, setPick] = useState("react");
+  return (
+    <section className="rounded-3xl bg-surface p-3 sm:p-4">
+      <div className="rounded-2xl bg-card p-5 shadow-card">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-xl font-bold">Frameworks</h2>
+          <Chip tone="mint"><Check /> Core done</Chip>
+        </div>
+        <p className="mt-1 text-sm text-muted-foreground">Everyone takes the same core, then picks one path.</p>
+        <div className="mt-4 rounded-2xl border border-mint/40 bg-mint-soft/50 p-3.5">
+          <div className="text-sm font-semibold">Core · required</div>
+          <p className="mt-1 text-xs text-muted-foreground">JSX &amp; components · State &amp; props · Vite · Routing basics</p>
+        </div>
+        <div className="mt-3 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+          <GitBranch className="size-3.5" /> Then pick one
+        </div>
+        <div className="mt-2 grid gap-2">
+          {BRANCHES.map((b) => (
+            <button
+              key={b.id}
+              type="button"
+              onClick={() => setPick(b.id)}
+              aria-pressed={pick === b.id}
+              className={cn(
+                "flex items-center gap-3 rounded-2xl border p-3 text-left outline-none focus-visible:ring-4 focus-visible:ring-ring/20",
+                pick === b.id ? "border-primary bg-secondary" : "border-border hover:bg-accent",
+              )}
+            >
+              <span className={cn("grid size-5 shrink-0 place-items-center rounded-full border-2", pick === b.id ? "border-primary" : "border-border")}>
+                {pick === b.id && <span className="size-2.5 rounded-full bg-primary" />}
+              </span>
+              <span>
+                <span className="block text-sm font-semibold">{b.title}</span>
+                <span className="block text-xs text-muted-foreground">{b.body}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+        <Btn className="mt-5 w-full">Start this path <ChevronRight /></Btn>
+        <p className="mt-2 text-xs text-muted-foreground">You can change your mind until you start. After that, ask a mentor to switch you.</p>
       </div>
     </section>
   );

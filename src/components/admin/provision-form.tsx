@@ -58,15 +58,15 @@ export function ProvisionForm() {
 
   if (result) {
     return (
-      <div className="rounded-2xl border bg-card p-6">
-        <div className="grid size-10 place-items-center rounded-xl bg-moss-soft text-moss">
+      <div className="rounded-2xl bg-card shadow-card ring-1 ring-foreground/5 p-6">
+        <div className="grid size-10 place-items-center rounded-xl bg-mint-soft text-mint-foreground">
           <Check className="size-5" />
         </div>
         <h2 className="mt-4 text-xl font-bold">{name} is provisioned</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Spaces: {result.spaces.map((s) => `/c/${result.slug}/${s}`).join(", ")}
         </p>
-        <div className="mt-5 rounded-xl border border-dashed bg-muted/40 p-3">
+        <div className="mt-5 rounded-xl border border-dashed bg-surface p-3">
           <div className="text-xs font-medium">Owner invite for {ownerEmail}</div>
           <div className="mt-2 flex items-center gap-2">
             <code className="min-w-0 flex-1 truncate font-mono text-xs">{result.ownerInviteUrl}</code>
@@ -118,8 +118,8 @@ export function ProvisionForm() {
 
   return (
     <form onSubmit={submit} className="space-y-8">
-      <section className="space-y-5 rounded-2xl border bg-card p-6">
-        <h2 className="text-base font-bold">Community</h2>
+      <section className="space-y-5 rounded-2xl bg-card shadow-card ring-1 ring-foreground/5 p-6">
+        <h2 className="font-display text-lg font-bold">Community</h2>
         <div className="grid gap-5 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="name">Community name</Label>
@@ -127,7 +127,7 @@ export function ProvisionForm() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="slug">URL slug</Label>
-            <div className="flex items-center rounded-lg border bg-muted/40 pl-3 font-mono text-xs text-muted-foreground focus-within:ring-3 focus-within:ring-ring/50">
+            <div className="flex items-center rounded-xl border border-input bg-surface pl-4 font-mono text-xs text-muted-foreground shadow-xs focus-within:border-primary focus-within:ring-4 focus-within:ring-ring/15">
               <span>/c/</span>
               <input
                 id="slug"
@@ -158,9 +158,9 @@ export function ProvisionForm() {
         </div>
       </section>
 
-      <section className="space-y-4 rounded-2xl border bg-card p-6">
+      <section className="space-y-4 rounded-2xl bg-card shadow-card ring-1 ring-foreground/5 p-6">
         <div>
-          <h2 className="text-base font-bold">Spaces</h2>
+          <h2 className="font-display text-lg font-bold">Spaces</h2>
           <p className="text-sm text-muted-foreground">
             The tracks this community runs. Each one gets its own roadmap, team and leaderboard. Leave empty for a single
             &ldquo;General&rdquo; space.
@@ -168,7 +168,7 @@ export function ProvisionForm() {
         </div>
         <div className="flex flex-wrap gap-2">
           {spaces.map((s) => (
-            <span key={s} className="inline-flex items-center gap-1.5 rounded-lg border bg-background py-1 pr-1 pl-3 text-sm">
+            <span key={s} className="inline-flex items-center gap-1.5 rounded-full bg-surface py-1 pr-1 pl-3.5 text-sm font-medium">
               {s}
               <span className="font-mono text-[10px] text-muted-foreground">/{slugify(s)}</span>
               <button
@@ -213,9 +213,9 @@ export function ProvisionForm() {
         </div>
       </section>
 
-      <section className="space-y-4 rounded-2xl border bg-card p-6">
+      <section className="space-y-4 rounded-2xl bg-card shadow-card ring-1 ring-foreground/5 p-6">
         <div>
-          <h2 className="text-base font-bold">Owner</h2>
+          <h2 className="font-display text-lg font-bold">Owner</h2>
           <p className="text-sm text-muted-foreground">
             The community lead. They get Lead access in every space and can appoint admins, leads, managers and mentors.
           </p>

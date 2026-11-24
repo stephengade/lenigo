@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { ArrowRight, Check, Flame, LibraryBig, Map, PenLine, UserPlus } from "lucide-react";
-import { PageHeader, StatTile } from "@/components/page-header";
+import { ArrowRight, BookOpen, Check, Flame, LibraryBig, Map, PenLine, Trophy, UserPlus, Users } from "lucide-react";
+import { PageHeader, Panel, StatTile } from "@/components/page-header";
 import { UserAvatar } from "@/components/user-avatar";
 import { RoleBadge } from "@/components/role-badge";
 import { pageSpace } from "@/server/auth/guards";
 import { listSpaceMembers } from "@/server/services/communities";
 import { space as rules } from "@/lib/permissions";
+import { POINT_SOURCES } from "@/lib/points";
 import { cn } from "@/lib/utils";
 
 export const metadata = { title: "Home" };
@@ -26,96 +27,127 @@ export default async function SpaceHomePage({ params }: { params: Promise<{ comm
   ].filter((x) => x.show);
 
   return (
-    <div className="space-y-8">
-      <PageHeader eyebrow={space.name} title={`Good to see you, ${firstName}.`} description={space.description ?? undefined} />
+    <div className="space-y-6">
+      <PageHeader eyebrow={space.name} title={`Hey ${firstName}`} description={space.description ?? undefined} />
 
-      <div className="grid gap-4 lg:grid-cols-[1.5fr_1fr]">
-        <section className="relative overflow-hidden rounded-2xl border bg-ink p-6 text-ink-foreground">
-          <div className="pointer-events-none absolute -top-16 -right-16 size-56 rounded-full bg-ember/30 blur-3xl" />
-          <div className="relative flex items-center gap-2 font-mono text-[11px] tracking-wider text-ink-foreground/60 uppercase">
-            <PenLine className="size-3.5" /> Daily standup
-          </div>
-          <h2 className="relative mt-3 text-2xl font-bold">What did you build or learn today?</h2>
-          <p className="relative mt-2 max-w-md text-sm text-ink-foreground/70">
-            Thirty seconds a day: what you did, your next step, and anything blocking you. Earns +10 pts and keeps your streak alive.
-          </p>
-          <div className="relative mt-6 inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-ink-foreground/80">
-            Standups open in Phase 3
-          </div>
-        </section>
-
-        <section className="grid grid-cols-2 gap-3">
-          <StatTile label="Streak" value={<span className="inline-flex items-center gap-1.5"><Flame className="size-6 text-ember" />0d</span>} hint="Check in daily to start one" />
-          <StatTile label="Points" value="0" accent hint="This week" />
-          <StatTile label="Learners" value={learners} />
-          <StatTile label="Team" value={team.length} hint="Leads, managers, mentors" />
-        </section>
+      {/* Stats. Points come from the twice-daily leaderboard snapshot, never the live ledger. */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile icon={<Flame />} tone="sun" label="Current streak" value="0 days" hint="Post a standup to start one" />
+        <StatTile icon={<Trophy />} tone="rose" label="Points" value="0" hint="Board updates 7 AM & 7 PM" />
+        <StatTile icon={<BookOpen />} tone="lilac" label="Learners" value={learners} />
+        <StatTile icon={<Users />} tone="mint" label="Team" value={team.length} hint="Leads, managers and mentors" />
       </div>
 
-      {setup.length ? (
-        <section className="rounded-2xl border bg-card p-5">
-          <h2 className="text-base font-bold">Set up {space.name}</h2>
-          <p className="text-sm text-muted-foreground">A few steps before your first cohort starts.</p>
-          <ol className="mt-4 grid gap-2 sm:grid-cols-3">
-            {setup.map((step, i) => (
-              <li key={step.label}>
-                <Link
-                  href={step.href}
-                  className={cn(
-                    "group flex h-full items-center gap-3 rounded-xl border p-3 text-sm transition-colors hover:bg-muted/50",
-                    step.done && "border-moss/30 bg-moss-soft/40",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "grid size-7 shrink-0 place-items-center rounded-full border font-mono text-xs",
-                      step.done ? "border-moss bg-moss text-white" : "text-muted-foreground",
-                    )}
-                  >
-                    {step.done ? <Check className="size-3.5" /> : i + 1}
-                  </span>
-                  <span className="flex-1 font-medium">{step.label}</span>
-                  <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-                </Link>
-              </li>
-            ))}
-          </ol>
-        </section>
-      ) : null}
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <section className="rounded-2xl border bg-card p-5">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold">Your roadmap</h2>
-            <Link href={`${base}/roadmap`} className="text-sm text-muted-foreground hover:text-foreground">
-              Open <ArrowRight className="inline size-3.5" />
-            </Link>
+      <div className="grid items-start gap-4 lg:grid-cols-[1.5fr_1fr]">
+        {/* Daily standup */}
+        <Panel tone="sage">
+          <div className="rounded-2xl bg-card p-6 shadow-card">
+            <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+              <span className="grid size-8 place-items-center rounded-xl bg-mint-soft text-mint-foreground">
+                <PenLine className="size-4" />
+              </span>
+              Daily standup
+            </div>
+            <h2 className="mt-4 font-display text-2xl font-bold">What did you build or learn today?</h2>
+            <p className="mt-2 max-w-md text-sm text-muted-foreground">
+              Thirty seconds a day: what you did, your next step, and anything blocking you. It counts towards your points and keeps
+              your streak alive.
+            </p>
+            <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-surface px-4 py-2 text-sm font-medium text-muted-foreground">
+              Standups open in phase 3
+            </div>
           </div>
-          <div className="mt-4 flex items-center gap-3 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-            <Map className="size-5 shrink-0" />
-            Tracks, levels and modules arrive in Phase 2. Your active module will show here.
-          </div>
-        </section>
+        </Panel>
 
-        <section className="rounded-2xl border bg-card p-5">
-          <h2 className="text-base font-bold">Your team</h2>
-          {team.length === 0 ? (
-            <p className="mt-4 text-sm text-muted-foreground">No leads or mentors yet.</p>
-          ) : (
-            <ul className="mt-4 space-y-3">
-              {team.slice(0, 6).map((m) => (
-                <li key={m.userId} className="flex items-center gap-3">
-                  <UserAvatar name={m.name} email={m.email} src={m.avatarUrl} />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">{m.name ?? m.email}</div>
-                    {m.githubUsername ? <div className="truncate text-xs text-muted-foreground">@{m.githubUsername}</div> : null}
-                  </div>
-                  <RoleBadge role={m.role} />
+        {/* What earns points: sources only, never values */}
+        <Panel>
+          <div className="rounded-2xl bg-card p-5 shadow-card">
+            <h2 className="font-display text-lg font-bold">How you earn points</h2>
+            <ul className="mt-3 grid gap-2">
+              {POINT_SOURCES.map((p) => (
+                <li key={p.key} className="flex items-start gap-2.5 text-sm">
+                  <Check className="mt-0.5 size-4 shrink-0 text-mint" strokeWidth={3} />
+                  <span>{p.label}</span>
                 </li>
               ))}
             </ul>
-          )}
-        </section>
+            <p className="mt-4 rounded-xl bg-surface p-3 text-xs text-muted-foreground">
+              Exact values aren&rsquo;t published, so the board rewards real work.
+            </p>
+          </div>
+        </Panel>
+      </div>
+
+      {setup.length ? (
+        <Panel>
+          <div className="rounded-2xl bg-card p-5 shadow-card">
+            <h2 className="font-display text-lg font-bold">Set up {space.name}</h2>
+            <p className="text-sm text-muted-foreground">A few steps before your first cohort starts.</p>
+            <ol className="mt-4 grid gap-2 sm:grid-cols-3">
+              {setup.map((step, i) => (
+                <li key={step.label}>
+                  <Link
+                    href={step.href}
+                    className={cn(
+                      "group flex h-full items-center gap-3 rounded-2xl border p-3.5 text-sm transition-colors hover:bg-surface/60",
+                      step.done ? "border-mint/40 bg-mint-soft/50" : "border-border",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "grid size-8 shrink-0 place-items-center rounded-xl text-xs font-bold",
+                        step.done ? "bg-mint text-white" : "bg-secondary text-secondary-foreground",
+                      )}
+                    >
+                      {step.done ? <Check className="size-4" strokeWidth={3} /> : i + 1}
+                    </span>
+                    <span className="flex-1 font-medium">{step.label}</span>
+                    <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                  </Link>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </Panel>
+      ) : null}
+
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        <Panel>
+          <div className="rounded-2xl bg-card p-5 shadow-card">
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-lg font-bold">Your roadmap</h2>
+              <Link href={`${base}/roadmap`} className="inline-flex items-center gap-1 text-sm font-medium text-primary">
+                Open <ArrowRight className="size-3.5" />
+              </Link>
+            </div>
+            <div className="mt-4 flex items-center gap-3 rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+              <Map className="size-5 shrink-0" />
+              Tracks, levels and modules arrive in phase 2. Your active module will show here.
+            </div>
+          </div>
+        </Panel>
+
+        <Panel>
+          <div className="rounded-2xl bg-card p-5 shadow-card">
+            <h2 className="font-display text-lg font-bold">Your team</h2>
+            {team.length === 0 ? (
+              <p className="mt-4 text-sm text-muted-foreground">No leads or mentors yet.</p>
+            ) : (
+              <ul className="mt-4 space-y-3">
+                {team.slice(0, 6).map((m) => (
+                  <li key={m.userId} className="flex items-center gap-3">
+                    <UserAvatar name={m.name} email={m.email} src={m.avatarUrl} />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium">{m.name ?? m.email}</div>
+                      {m.githubUsername ? <div className="truncate text-xs text-muted-foreground">@{m.githubUsername}</div> : null}
+                    </div>
+                    <RoleBadge role={m.role} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Panel>
       </div>
     </div>
   );

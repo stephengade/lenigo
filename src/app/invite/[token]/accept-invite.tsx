@@ -24,7 +24,7 @@ export function AcceptInvite({ token, signedInAs, lockedTo }: { token: string; s
 
   return (
     <div className="space-y-3">
-      <Button size="lg" className="h-11 w-full" onClick={accept} disabled={pending}>
+      <Button size="lg" className="w-full" onClick={accept} disabled={pending}>
         {pending ? <Loader2 className="animate-spin" /> : null} Accept invite <ArrowRight data-icon="inline-end" />
       </Button>
       <p className="text-center text-xs text-muted-foreground">
@@ -46,7 +46,7 @@ export function AcceptInvite({ token, signedInAs, lockedTo }: { token: string; s
         ) : null}
       </p>
       {error ? (
-        <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+        <p role="alert" className="rounded-2xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
         </p>
       ) : null}

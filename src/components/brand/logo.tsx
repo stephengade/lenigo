@@ -16,7 +16,7 @@ export function Logo({ href = "/", className, tone }: { href?: string; className
   return (
     <Link href={href} className={cn("inline-flex items-center gap-2 rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/50", className)}>
       <LogoMark inverted={tone === "light"} />
-      <span className={cn("font-display text-lg font-bold tracking-tight", tone === "light" && "text-ink-foreground")}>lenigo</span>
+      <span className={cn("font-display text-lg font-black tracking-tight uppercase", tone === "light" && "text-ink-foreground")}>Lenigo</span>
     </Link>
   );
 }

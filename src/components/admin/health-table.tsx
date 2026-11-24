@@ -20,10 +20,10 @@ export type HealthRow = {
 /** FR-7.3: compare tenants on engagement and review backlog. */
 export function HealthTable({ rows }: { rows: HealthRow[] }) {
   return (
-    <div className="overflow-x-auto rounded-2xl border bg-card">
+    <div className="overflow-x-auto rounded-2xl bg-card shadow-card ring-1 ring-foreground/5">
       <table className="w-full min-w-[760px] text-sm">
         <thead>
-          <tr className="border-b text-left font-mono text-[10px] tracking-wider text-muted-foreground uppercase">
+          <tr className="border-b text-left text-xs font-medium text-muted-foreground">
             <th className="px-4 py-3 font-medium">Community</th>
             <th className="px-3 py-3 text-right font-medium">Members</th>
             <th className="px-3 py-3 text-right font-medium">DAU / WAU</th>
@@ -36,7 +36,7 @@ export function HealthTable({ rows }: { rows: HealthRow[] }) {
           {rows.map((r) => {
             const engagement = r.members ? Math.round((r.wau / r.members) * 100) : 0;
             return (
-              <tr key={r.id} className="transition-colors hover:bg-muted/40">
+              <tr key={r.id} className="transition-colors hover:bg-surface">
                 <td className="px-4 py-3">
                   <Link href={`/admin/communities/${r.slug}`} className="group flex items-center gap-3">
                     <span className="grid size-8 place-items-center rounded-lg bg-ink font-display text-sm font-bold text-ink-foreground">
@@ -60,13 +60,13 @@ export function HealthTable({ rows }: { rows: HealthRow[] }) {
                 <td className="px-3 py-3 text-right tabular">
                   {r.dau} / {r.wau}
                   <div className="ml-auto mt-1 h-1 w-16 overflow-hidden rounded-full bg-muted">
-                    <div className="h-full rounded-full bg-moss" style={{ width: `${Math.min(engagement, 100)}%` }} />
+                    <div className="h-full rounded-full bg-mint" style={{ width: `${Math.min(engagement, 100)}%` }} />
                   </div>
                 </td>
                 <td className="px-3 py-3 text-right tabular">{r.shipped}</td>
                 <td className="px-3 py-3 text-right tabular">
                   <span className="inline-flex items-center gap-1">
-                    <Flame className="size-3.5 text-ember" />
+                    <Flame className="size-3.5 text-sun-foreground" />
                     {r.avgStreak}d
                   </span>
                 </td>
@@ -74,7 +74,7 @@ export function HealthTable({ rows }: { rows: HealthRow[] }) {
                   <span
                     className={cn(
                       "inline-flex min-w-8 justify-center rounded-full px-2 py-0.5 text-xs font-medium tabular",
-                      r.pendingReviews > 10 ? "bg-destructive/10 text-destructive" : r.pendingReviews > 0 ? "bg-ember-soft text-accent-foreground" : "bg-muted text-muted-foreground",
+                      r.pendingReviews > 10 ? "bg-destructive/10 text-destructive" : r.pendingReviews > 0 ? "bg-sun-soft text-sun-foreground" : "bg-surface text-muted-foreground",
                     )}
                   >
                     {r.pendingReviews}

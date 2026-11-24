@@ -11,7 +11,7 @@
  * light-grey panels, generous radii, pill controls, one confident blue for
  * actions, ink for "you are here", and pastel tints that carry meaning.
  *
- *   Type      display = Teachers (headings, big numbers) · sans = Inter (UI, body)
+ *   Type      display = Rubik (headings, big numbers; Black + uppercase on marketing) · sans = Inter (UI, body)
  *   Action    primary (blue)      → buttons, links, focus ring
  *   Selected  ink (near-black)    → active nav pill, selected chips
  *   Surfaces  background < surface (grey panel) < card (white)
@@ -27,7 +27,7 @@
 
 @theme inline {
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-teachers), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-rubik), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-heading: var(--font-display);
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 
@@ -277,4 +277,20 @@
 
 @utility tabular {
   font-variant-numeric: tabular-nums;
+}
+
+/* Landing page: scrolling band of subjects (paused for reduced motion via motion-reduce:animate-none). */
+@keyframes lenigo-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
 }

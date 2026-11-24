@@ -59,7 +59,7 @@ export function CreateSpaceDialog({ communitySlug }: { communitySlug: string }) 
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="space-slug">URL</Label>
-            <div className="flex items-center rounded-lg border bg-muted/40 pl-3 font-mono text-xs text-muted-foreground focus-within:ring-3 focus-within:ring-ring/50">
+            <div className="flex items-center rounded-xl border border-input bg-surface pl-4 font-mono text-xs text-muted-foreground shadow-xs focus-within:border-primary focus-within:ring-4 focus-within:ring-ring/15">
               <span className="shrink-0">/c/{communitySlug}/</span>
               <input
                 id="space-slug"
@@ -92,8 +92,8 @@ export function CreateSpaceDialog({ communitySlug }: { communitySlug: string }) 
                   onClick={() => setJoinPolicy(value)}
                   aria-pressed={joinPolicy === value}
                   className={cn(
-                    "rounded-lg border p-3 text-left transition-colors",
-                    joinPolicy === value ? "border-foreground bg-muted/60" : "hover:bg-muted/40",
+                    "rounded-2xl border p-3.5 text-left transition-colors",
+                    joinPolicy === value ? "border-primary bg-secondary" : "border-border hover:bg-surface",
                   )}
                 >
                   <div className="text-sm font-medium">{label}</div>

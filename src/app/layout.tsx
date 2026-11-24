@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import { Geist_Mono, Inter, Teachers } from "next/font/google";
+import { Geist_Mono, Inter, Rubik } from "next/font/google";
 import { Providers } from "@/components/providers";
 import "./globals.css";
 
 /** Body + UI text. */
 const sans = Inter({ variable: "--font-inter", subsets: ["latin"] });
-/** Headings, numbers on stat cards, brand moments. */
-const display = Teachers({ variable: "--font-teachers", subsets: ["latin"] });
+/** Headings, numbers on stat cards, brand moments. Rubik Black (900) for uppercase display headings. */
+const display = Rubik({ variable: "--font-rubik", subsets: ["latin"], weight: ["500", "600", "700", "800", "900"] });
 const mono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {

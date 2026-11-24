@@ -33,14 +33,14 @@ export default async function SpaceTeamPage({ params }: { params: Promise<{ comm
 
       <div className="grid gap-8 xl:grid-cols-[1.4fr_1fr]">
         <section>
-          <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] tracking-wider text-muted-foreground uppercase">
+          <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-xs font-medium text-muted-foreground">
             {counts.map(([r, n]) => (
               <span key={r}>
                 {r.toLowerCase()}s · <span className="text-foreground">{n}</span>
               </span>
             ))}
           </div>
-          <ul className="divide-y rounded-2xl border bg-card">
+          <ul className="divide-y divide-border rounded-2xl bg-card shadow-card ring-1 ring-foreground/5">
             {members.length === 0 ? (
               <li className="px-4 py-10 text-center text-sm text-muted-foreground">
                 Nobody has joined yet. Community Owners and Admins already have Lead access.

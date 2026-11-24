@@ -41,8 +41,8 @@ export default async function CommunityMembersPage({ params }: { params: Promise
 
         <div className="grid gap-8 lg:grid-cols-[1.4fr_1fr]">
           <section>
-            <h2 className="mb-3 font-mono text-[11px] tracking-wider text-muted-foreground uppercase">Members · {members.length}</h2>
-            <ul className="divide-y rounded-2xl border bg-card">
+            <h2 className="mb-3 text-xs font-medium text-muted-foreground">Members · {members.length}</h2>
+            <ul className="divide-y divide-border rounded-2xl bg-card shadow-card ring-1 ring-foreground/5">
               {members.map((m) => (
                 <li key={m.userId} className="flex items-center gap-3 px-4 py-3">
                   <UserAvatar name={m.name} email={m.email} src={m.avatarUrl} />

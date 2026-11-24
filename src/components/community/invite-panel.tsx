@@ -75,10 +75,10 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
 
   return (
     <div className="space-y-6">
-      <form onSubmit={create} className="rounded-2xl border bg-card p-5">
+      <form onSubmit={create} className="rounded-2xl bg-card shadow-card ring-1 ring-foreground/5 p-5">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-base font-bold">Invite people</h2>
-          <div className="inline-flex rounded-lg border bg-muted/50 p-0.5 text-sm" role="tablist">
+          <h2 className="font-display text-lg font-bold">Invite people</h2>
+          <div className="inline-flex rounded-full bg-surface p-1 text-sm" role="tablist">
             {(
               [
                 ["email", Mail, "Email"],
@@ -96,8 +96,8 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
                   setExpiresInDays(m === "email" ? "14" : "7");
                 }}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-colors",
-                  mode === m ? "bg-card font-medium shadow-sm" : "text-muted-foreground hover:text-foreground",
+                  "inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-medium transition-colors",
+                  mode === m ? "bg-ink text-ink-foreground" : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 <Icon className="size-3.5" /> {label}
@@ -140,7 +140,7 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
             <Label htmlFor="invite-expiry">Expires in</Label>
             <select
               id="invite-expiry"
-              className="h-8 rounded-lg border bg-background px-2 text-sm"
+              className="h-9 rounded-full border border-input bg-card px-3 text-sm shadow-xs"
               value={expiresInDays}
               onChange={(e) => setExpiresInDays(e.target.value)}
             >
@@ -158,7 +158,7 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
         </div>
 
         {result ? (
-          <div className="mt-5 rounded-xl border border-dashed bg-muted/40 p-3">
+          <div className="mt-5 rounded-xl border border-dashed bg-surface p-3">
             <div className="flex items-center gap-2">
               <code className="min-w-0 flex-1 truncate font-mono text-xs">{result.url}</code>
               <Button type="button" size="sm" variant="outline" onClick={() => copy(result.url)}>
@@ -177,11 +177,11 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
       </form>
 
       <div>
-        <h3 className="mb-3 font-mono text-[11px] tracking-wider text-muted-foreground uppercase">Pending invites · {invites.length}</h3>
+        <h3 className="mb-3 text-xs font-medium text-muted-foreground">Pending invites · {invites.length}</h3>
         {invites.length === 0 ? (
           <p className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">No pending invites.</p>
         ) : (
-          <ul className="divide-y rounded-xl border bg-card">
+          <ul className="divide-y divide-border rounded-2xl bg-card shadow-card ring-1 ring-foreground/5">
             {invites.map((inv) => (
               <InviteRow key={inv.id} invite={inv} scope={scope} />
             ))}
@@ -211,7 +211,7 @@ function InviteRow({ invite, scope }: { invite: ActiveInvite; scope: InviteScope
 
   return (
     <li className="flex items-center gap-3 px-4 py-3">
-      <div className="grid size-8 place-items-center rounded-lg bg-muted text-muted-foreground">
+      <div className="grid size-8 place-items-center rounded-lg bg-surface text-muted-foreground">
         {invite.email ? <Mail className="size-4" /> : <Link2 className="size-4" />}
       </div>
       <div className="min-w-0 flex-1">
