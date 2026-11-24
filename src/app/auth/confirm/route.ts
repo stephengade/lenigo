@@ -5,6 +5,7 @@ import { syncUserFromAuth } from "@/server/auth/session";
 import { safeNext } from "@/lib/safe-next";
 
 /**
+ * Legacy: sign-in now uses emailed codes (/auth/verify). Kept so links in older emails still work.
  * Email magic links land here with ?token_hash=…&type=email. Works across devices
  * (no PKCE verifier needed), so an invite opened on a phone still signs you in.
  * Requires the Supabase "Magic Link" email template to link here — see README.

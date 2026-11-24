@@ -168,7 +168,7 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
             <p className="mt-2 text-xs text-muted-foreground">
               {mode === "email"
                 ? result.emailed
-                  ? "We also emailed a sign-in link that opens this invite."
+                  ? "We also emailed them this invite and a sign-in code."
                   : `Email not sent${result.emailError ? ` (${result.emailError})` : ""}. Send them this link yourself.`
                 : "Anyone with this link can join with the selected role until it expires or runs out of uses."}
             </p>

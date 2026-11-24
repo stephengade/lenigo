@@ -12,7 +12,7 @@ All four phases are implemented: the multi-tenant core (Phase 1), curriculum + l
 | --- | --- | --- |
 | Prisma ORM | **Drizzle ORM** + `postgres` driver | User: "no prisma please, prisma throws errors a lot". Don't reintroduce it. |
 | Next.js Server Actions / Route Handlers | **Elysia** mounted at `/api/*` inside Next.js, **Eden** typed client | User's choice. |
-| Auth.js (NextAuth v5) + Resend | **Supabase Auth** (GitHub OAuth + email magic links) | User is on Supabase. Its mailer replaces Resend. |
+| Auth.js (NextAuth v5) + Resend | **Supabase Auth** (emailed one-time codes; GitHub OAuth optional, off until `AUTH_GITHUB_ENABLED=true`) | User is on Supabase. Its mailer replaces Resend. |
 | Self-hosted/Neon Postgres | **Supabase Postgres** | User's choice. |
 | Next.js 15 `middleware.ts` | **Next.js 16.4** + `src/proxy.ts` (`export function proxy`) | User asked for the current App Router conventions. Proxy runs on Node.js. |
 | Single-level tenant `/c/<slug>` | **Community → Space** two-level tenancy | User: communities (GDG OAU, Claude Ambassadors) have sub-communities (Web Dev, Data Science…). |
@@ -62,7 +62,8 @@ src/
   app/
     api/[[...slugs]]/route.ts mounts Elysia
     auth/callback             OAuth ?code= → session → syncUser → redirect
-    auth/confirm              magic link ?token_hash= → verifyOtp → syncUser
+    auth/verify               POST email + code → verifyOtp (server) → syncUser; same-origin only
+    auth/confirm              legacy magic link ?token_hash= → verifyOtp → syncUser
     admin/…                   Global House (overview, communities, new, [slug], activity, users)
     c/                        my communities
     c/[community]/            hub + /members
@@ -108,8 +109,8 @@ drizzle/0003_phase_2_4.sql         feed_items.meta, one PENDING submission per l
 1. `cp .env.example .env` and fill in `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (the dashboard's *Publishable key*, `sb_publishable_…`; a legacy anon key also works), `DATABASE_URL` (pooler :6543), `DIRECT_URL` (:5432) and `SUPER_ADMIN_EMAILS`.
 2. In the Supabase dashboard, follow README → Setup:
    - add the redirect URL `http://localhost:3000/**`;
-   - enable the GitHub provider;
-   - change the **Magic Link** and **Confirm signup** templates to `{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email` (`type=signup` for Confirm signup). Without this, magic links fall back to `?code=` (PKCE), which only works on the same browser.
+   - put `{{ .Token }}` (the sign-in code) in **both** the **Magic Link** and **Confirm signup** templates (README step 5), and set the OTP expiry to 10 minutes;
+   - GitHub is optional: enable the provider later, then set `AUTH_GITHUB_ENABLED=true`.
 3. `pnpm db:migrate`, then `pnpm dev`, sign in once with the super-admin email, then `pnpm db:seed`.
 
 ## Phase 1 acceptance test (not yet run)

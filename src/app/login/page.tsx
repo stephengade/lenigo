@@ -4,11 +4,13 @@ import { Logo } from "@/components/brand/logo";
 import { LoginForm } from "./login-form";
 import { getSessionUser } from "@/server/auth/session";
 import { safeNext } from "@/lib/safe-next";
+import { env } from "@/server/env";
 
 export const metadata: Metadata = { title: "Sign in" };
 
 const ERRORS: Record<string, string> = {
   missing_code: "That sign-in link was incomplete. Try again.",
+  // Older emailed links still work through /auth/confirm; these cover them.
   link_invalid: "That sign-in link isn't valid. Request a new one.",
   link_expired: "That sign-in link has expired. Request a new one.",
   sign_in_failed: "We couldn't sign you in. Try again.",
@@ -56,13 +58,13 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <Logo className="lg:hidden" />
         <div className="m-auto w-full max-w-sm py-10">
           <h1 className="font-display text-4xl leading-[0.95] font-black tracking-tight uppercase">Sign in</h1>
-          <p className="mt-3 text-muted-foreground">New here? Open your invite link. It signs you up and drops you straight into your community.</p>
+          <p className="mt-3 text-muted-foreground">New here? No sign-up needed: we email you a code, and your first sign-in creates your account. Invited? Open your invite link first.</p>
           {error ? (
             <p role="alert" className="mt-6 rounded-2xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
               {ERRORS[error] ?? error}
             </p>
           ) : null}
-          <LoginForm next={next} />
+          <LoginForm next={next} github={env.AUTH_GITHUB_ENABLED} />
         </div>
       </section>
     </main>

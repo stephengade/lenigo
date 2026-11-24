@@ -126,9 +126,9 @@ export async function insertInvite(
 }
 
 /**
- * Sends a Supabase magic link that signs the person in and lands them on /invite/<token>.
+ * Emails a Supabase sign-in code plus a link to /invite/<token> (the email's {{ .RedirectTo }}).
  * Uses Supabase's own mailer, so it creates the auth user if needed. Requires the
- * "Magic Link" email template to use the token_hash link (see README → Supabase setup).
+ * "Magic Link" and "Confirm signup" templates to show {{ .Token }} (see README → Supabase setup).
  */
 export async function sendInviteEmail(email: string, token: string): Promise<{ ok: boolean; error?: string }> {
   const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, {
@@ -138,7 +138,7 @@ export async function sendInviteEmail(email: string, token: string): Promise<{ o
     email,
     options: {
       shouldCreateUser: true,
-      emailRedirectTo: `${env.NEXT_PUBLIC_APP_URL}/auth/confirm?next=${encodeURIComponent(`/invite/${token}`)}`,
+      emailRedirectTo: `${env.NEXT_PUBLIC_APP_URL}/invite/${token}`,
     },
   });
   return error ? { ok: false, error: error.message } : { ok: true };

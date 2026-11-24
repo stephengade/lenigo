@@ -15,6 +15,11 @@ const schema = z.object({
     .string()
     .optional()
     .transform((v) => v?.trim() || undefined),
+  /** "true" shows "Continue with GitHub" on the sign-in page. Enable the provider in Supabase first. */
+  AUTH_GITHUB_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim().toLowerCase() === "true"),
   /** Comma-separated emails promoted to SUPER_ADMIN on sign-in. Bootstraps the Global House. */
   SUPER_ADMIN_EMAILS: z
     .string()

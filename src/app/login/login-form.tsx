@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowRight, Loader2, MailCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,13 +16,24 @@ export function GithubIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
-export function LoginForm({ next }: { next: string }) {
+type Step = "email" | "code";
+type Busy = null | "github" | "sending" | "verifying";
+
+/**
+ * Email sign-in with a one-time code. The code is checked on the server (/auth/verify),
+ * which also records the sign-in. No account needed beforehand: the first code creates it.
+ */
+export function LoginForm({ next, github: githubEnabled }: { next: string; github: boolean }) {
+  const router = useRouter();
+  const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
-  const [state, setState] = useState<"idle" | "github" | "sending" | "sent">("idle");
+  const [code, setCode] = useState("");
+  const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function github() {
-    setState("github");
+    setBusy("github");
     setError(null);
     const { error } = await createSupabaseBrowserClient().auth.signInWithOAuth({
       provider: "github",
@@ -29,55 +41,131 @@ export function LoginForm({ next }: { next: string }) {
     });
     if (error) {
       setError(error.message);
-      setState("idle");
+      setBusy(null);
     }
   }
 
-  async function magicLink(e: React.FormEvent) {
-    e.preventDefault();
-    setState("sending");
+  async function sendCode(e?: React.FormEvent) {
+    e?.preventDefault();
+    setBusy("sending");
     setError(null);
     const { error } = await createSupabaseBrowserClient().auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: `${location.origin}/auth/confirm?next=${encodeURIComponent(next)}`, shouldCreateUser: true },
+      email: email.trim(),
+      // Only used by the email's "open the sign-in page" link; the code itself works anywhere.
+      options: { emailRedirectTo: `${location.origin}/login?next=${encodeURIComponent(next)}`, shouldCreateUser: true },
     });
+    setBusy(null);
     if (error) {
-      setError(error.message);
-      setState("idle");
-    } else setState("sent");
+      setError(/rate|seconds/i.test(error.message) ? "Too many codes requested. Wait a minute, then try again." : error.message);
+      return;
+    }
+    setSent(true);
+    setCode("");
+    setStep("code");
   }
 
-  if (state === "sent") {
+  async function verify(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy("verifying");
+    setError(null);
+    try {
+      const res = await fetch("/auth/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), code: code.trim(), next }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { next?: string; error?: string };
+      if (!res.ok || !body.next) {
+        setError(body.error ?? "We couldn't sign you in. Try again.");
+        setBusy(null);
+        return;
+      }
+      router.replace(body.next);
+      router.refresh();
+    } catch {
+      setError("Network problem. Check your connection and try again.");
+      setBusy(null);
+    }
+  }
+
+  if (step === "code") {
     return (
-      <div className="mt-8 rounded-3xl bg-surface p-3"><div className="rounded-2xl bg-card p-6 shadow-card">
-        <div className="grid size-11 place-items-center rounded-2xl bg-mint-soft text-mint-foreground">
-          <MailCheck className="size-5" />
-        </div>
-        <h2 className="mt-4 font-display text-xl font-bold">Check your inbox</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          We sent a sign-in link to <span className="font-medium text-foreground">{email}</span>. It works on any device.
-        </p>
-        <Button variant="ghost" size="sm" className="mt-4 -ml-2" onClick={() => setState("idle")}>
-          Use a different email
-        </Button>
-      </div></div>
+      <div className="mt-8 rounded-3xl bg-surface p-3">
+        <form onSubmit={verify} className="rounded-2xl bg-card p-6 shadow-card">
+          <div className="grid size-11 place-items-center rounded-2xl bg-mint-soft text-mint-foreground">
+            <MailCheck className="size-5" />
+          </div>
+          <h2 className="mt-4 font-display text-xl font-bold">{sent ? "Check your inbox" : "Enter your code"}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {sent ? "We sent a sign-in code to " : "Use the sign-in code we emailed to "}
+            <span className="font-medium text-foreground">{email}</span>.
+          </p>
+          <div className="mt-5 space-y-1.5">
+            <Label htmlFor="code">Sign-in code</Label>
+            <Input
+              id="code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              pattern="[0-9]{6,10}"
+              maxLength={10}
+              required
+              autoFocus
+              placeholder="123456"
+              className="font-mono text-lg tracking-[0.3em]"
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+            />
+          </div>
+          <Button type="submit" size="lg" className="mt-4 w-full" disabled={busy !== null || code.length < 6}>
+            {busy === "verifying" ? <Loader2 className="animate-spin" /> : null}
+            Sign in
+            <ArrowRight data-icon="inline-end" />
+          </Button>
+          {error ? (
+            <p role="alert" className="mt-3 text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
+          <div className="mt-4 flex flex-wrap gap-x-4 -ml-2">
+            <Button type="button" variant="ghost" size="sm" disabled={busy !== null} onClick={() => sendCode()}>
+              {busy === "sending" ? <Loader2 className="animate-spin" /> : null}
+              Send a new code
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={busy !== null}
+              onClick={() => {
+                setStep("email");
+                setError(null);
+              }}
+            >
+              Use a different email
+            </Button>
+          </div>
+        </form>
+      </div>
     );
   }
 
   return (
     <div className="mt-8 space-y-6">
-      <Button variant="ink" size="lg" className="w-full" onClick={github} disabled={state !== "idle"}>
-        {state === "github" ? <Loader2 className="animate-spin" /> : <GithubIcon className="size-4" />}
-        Continue with GitHub
-      </Button>
+      {githubEnabled ? (
+        <>
+          <Button variant="ink" size="lg" className="w-full" onClick={github} disabled={busy !== null}>
+            {busy === "github" ? <Loader2 className="animate-spin" /> : <GithubIcon className="size-4" />}
+            Continue with GitHub
+          </Button>
+          <div className="flex items-center gap-3 text-xs font-medium text-muted-foreground">
+            <span className="h-px flex-1 bg-border" />
+            or email
+            <span className="h-px flex-1 bg-border" />
+          </div>
+        </>
+      ) : null}
 
-      <div className="flex items-center gap-3 text-xs font-medium text-muted-foreground">
-        <span className="h-px flex-1 bg-border" />
-        or email
-        <span className="h-px flex-1 bg-border" />
-      </div>
-
-      <form onSubmit={magicLink} className="space-y-3">
+      <form onSubmit={sendCode} className="space-y-3">
         <div className="space-y-1.5">
           <Label htmlFor="email">Email address</Label>
           <Input
@@ -90,10 +178,24 @@ export function LoginForm({ next }: { next: string }) {
             onChange={(e) => setEmail(e.target.value)}
           />
         </div>
-        <Button type="submit" size="lg" className="w-full" disabled={state !== "idle" || !email}>
-          {state === "sending" ? <Loader2 className="animate-spin" /> : null}
-          Email me a sign-in link
+        <Button type="submit" size="lg" className="w-full" disabled={busy !== null || !email}>
+          {busy === "sending" ? <Loader2 className="animate-spin" /> : null}
+          Email me a sign-in code
           <ArrowRight data-icon="inline-end" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="-ml-2"
+          disabled={busy !== null || !email}
+          onClick={() => {
+            setSent(false);
+            setError(null);
+            setStep("code");
+          }}
+        >
+          I already have a code
         </Button>
       </form>
 
@@ -102,7 +204,9 @@ export function LoginForm({ next }: { next: string }) {
           {error}
         </p>
       ) : null}
-      <p className="text-xs text-muted-foreground">GitHub is recommended: it fills in your handle and avatar for project reviews.</p>
+      {githubEnabled ? (
+        <p className="text-xs text-muted-foreground">GitHub is recommended: it fills in your handle and avatar for project reviews.</p>
+      ) : null}
     </div>
   );
 }

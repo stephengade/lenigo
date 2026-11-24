@@ -2,7 +2,7 @@
 
 A multi-tenant community learning and accountability platform: structured roadmaps, required projects, daily standups, mentor reviews, streaks and leaderboards.
 
-**Stack:** Next.js 16 (App Router, `proxy.ts`) · TypeScript · Tailwind v4 + shadcn/ui (Base UI) · **Elysia** API mounted at `/api` with an Eden typed client · **Drizzle ORM** · **Supabase** (Postgres + Auth: GitHub OAuth and email magic links).
+**Stack:** Next.js 16 (App Router, `proxy.ts`) · TypeScript · Tailwind v4 + shadcn/ui (Base UI) · **Elysia** API mounted at `/api` with an Eden typed client · **Drizzle ORM** · **Supabase** (Postgres + Auth: emailed one-time codes; GitHub OAuth optional).
 
 ## Tenancy model
 
@@ -55,13 +55,12 @@ drizzle/                  SQL migrations
 3. **Authentication → URL Configuration:**
    - Site URL: `http://localhost:3000` (your prod URL in production)
    - Redirect URLs: add `http://localhost:3000/**` (and `https://your-domain/**`)
-4. **Authentication → Providers → GitHub:** enable it. Create a GitHub OAuth App whose callback is `https://<project-ref>.supabase.co/auth/v1/callback`.
-5. **Authentication → Emails → Magic Link** template: replace the link with
-   ```html
-   <a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email">Sign in to Lenigo</a>
-   ```
-   Do the same for the **Confirm signup** template, using `type=signup`.
-   This makes magic links and invite emails work across devices (`/auth/confirm` verifies the token on the server).
+4. *(Optional, later)* **Authentication → Providers → GitHub:** enable it with a GitHub OAuth App whose callback is `https://<project-ref>.supabase.co/auth/v1/callback`, then set `AUTH_GITHUB_ENABLED=true`. Until then the sign-in page shows email only.
+5. **Sign-in is by emailed code, not link.** Supabase sends a code instead of a link when the template contains `{{ .Token }}`. In **Authentication → Emails**, paste the ready-made templates (branded, email-client safe; subject line is in each file's top comment):
+   - **Magic Link** ← `supabase/templates/magic-link.html` (subject: *Your Lenigo sign-in code*)
+   - **Confirm signup** ← `supabase/templates/confirm-signup.html` (subject: *Welcome to Lenigo: your sign-in code*). First-time sign-ins use this one, so both are needed.
+   Don't put `{{ .ConfirmationURL }}` in them: a code is the only way in. `{{ .RedirectTo }}` is the sign-in page, or the invite page for invite emails.
+   In **Authentication → Providers → Email**, set **Email OTP Expiration** to 600 seconds (10 minutes); the default is an hour. Supabase also limits how often codes can be requested and tried.
 6. **Leaderboard schedule:** Database → Extensions → enable **pg_cron**, then run in the SQL editor (after `pnpm db:migrate`):
    ```sql
    select cron.schedule('lenigo-leaderboard', '0 6,18 * * *', 'select lenigo_snapshot_leaderboards()');
@@ -127,7 +126,7 @@ Errors are JSON `{ error: string }` with a meaningful status (401/403/404/409/41
 
 ## Phase status
 
-- [x] **Phase 1:** schema (all phases), Supabase auth (GitHub + magic link), Global House (overview, provisioning, health, activity stream, users and global roles), community → space hierarchy, role-scoped invites (email and shareable links), team management, RBAC, audit log, append-only ledger triggers. Schema also carries the learning rules (earned levels, checkpoints, capstones, mentor scoring); see handoff.md → Learning rules.
+- [x] **Phase 1:** schema (all phases), Supabase auth (email code; GitHub optional), Global House (overview, provisioning, health, activity stream, users and global roles), community → space hierarchy, role-scoped invites (email and shareable links), team management, RBAC, audit log, append-only ledger triggers. Schema also carries the learning rules (earned levels, checkpoints, capstones, mentor scoring); see handoff.md → Learning rules.
 - [x] **Phase 2:** curriculum CMS, roadmap, module workspace (server-verified video progress, checkpoint assessments, capstone projects), mentor scoring, tracks with per-track levels, onboarding questions + optional placement test, level promotions, sequential unlocking.
 - [x] **Phase 3:** standups, feed with reactions and comments, review queue, streak engine, points ledger, leaderboards.
 - [x] **Phase 4:** workshops, RSVP with live-review queue, public profiles `/u/[username]`.
