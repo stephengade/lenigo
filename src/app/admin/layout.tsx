@@ -4,6 +4,7 @@ import { AdminNav } from "@/components/admin/admin-nav";
 import { RoleBadge } from "@/components/role-badge";
 import { pageGlobalHouse } from "@/server/auth/guards";
 import Link from "next/link";
+import { global } from "@/lib/permissions";
 
 export const metadata = { title: { template: "%s · Global House", default: "Global House" } };
 
@@ -23,7 +24,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             </div>
           </Link>
         </div>
-        <AdminNav />
+        <AdminNav canProvision={global.canProvision(user.globalRole)} />
         <div className="m-3 mt-auto hidden items-center gap-3 rounded-2xl bg-ink-foreground/8 p-3 md:flex">
           <UserMenu
             user={{ name: user.name, email: user.email, avatarUrl: user.avatarUrl, githubUsername: user.githubUsername, username: user.username, globalRole: user.globalRole }}

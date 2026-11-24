@@ -19,6 +19,7 @@ import {
 } from "@/server/services/communities";
 import { createCommunityInvite, createSpaceInvite, redeemInvite, redeemMyInvite, resendInvite, revokeInvite } from "@/server/services/invites";
 import { listActivity, setGlobalRole, setUserActive } from "@/server/services/admin";
+import { setCommunityRequestStatus, submitCommunityRequest } from "@/server/services/community-requests";
 import { community as communityRules, global, space as spaceRules } from "@/lib/permissions";
 
 const json = (status: number, body: unknown) =>
@@ -81,6 +82,26 @@ export const app = new Elysia({ prefix: "/api" })
   .use(authMacro)
 
   .get("/health", () => ({ ok: true, at: new Date().toISOString() }))
+  // Public: the landing page's "Bring your community" form. Rate-limited in the service.
+  .post(
+    "/community-requests",
+    async ({ body, request }) => {
+      const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || null;
+      return await submitCommunityRequest(body, ip);
+    },
+    {
+      body: t.Object({
+        name: t.String({ maxLength: 80 }),
+        email: t.String({ maxLength: 254 }),
+        communityName: t.String({ maxLength: 120 }),
+        size: t.String({ maxLength: 20 }),
+        location: t.Optional(t.Union([t.String({ maxLength: 120 }), t.Null()])),
+        about: t.String({ maxLength: 2000 }),
+        link: t.Optional(t.Union([t.String({ maxLength: 300 }), t.Null()])),
+        website: t.Optional(t.Union([t.String({ maxLength: 300 }), t.Null()])),
+      }),
+    },
+  )
   .get("/me", ({ user }) => ({ id: user.id, email: user.email, name: user.name, globalRole: user.globalRole }), { auth: true })
   .patch(
     "/me",
@@ -165,6 +186,18 @@ export const app = new Elysia({ prefix: "/api" })
           return { ok: true };
         },
         { auth: true, params: t.Object({ id: t.String({ format: "uuid" }) }), body: t.Object({ active: t.Boolean() }) },
+      )
+      .patch(
+        "/community-requests/:id",
+        async ({ user, params, body }) => {
+          await setCommunityRequestStatus(user, params.id, body.status);
+          return { ok: true };
+        },
+        {
+          auth: true,
+          params: t.Object({ id: t.String({ format: "uuid" }) }),
+          body: t.Object({ status: t.Union([t.Literal("NEW"), t.Literal("CONTACTED"), t.Literal("PROVISIONED"), t.Literal("DECLINED")]) }),
+        },
       )
       .get(
         "/activity",

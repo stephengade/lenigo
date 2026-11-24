@@ -17,7 +17,14 @@ export type SendResult = { ok: true } | { ok: false; error: string };
  * Sends one transactional email through the ZeptoMail API. Renders the React Email template to
  * HTML plus a plain-text part. Never throws: callers decide what a failed send means.
  */
-export async function sendEmail(opts: { to: string; toName?: string | null; subject: string; react: React.ReactElement }): Promise<SendResult> {
+export async function sendEmail(opts: {
+  to: string;
+  toName?: string | null;
+  subject: string;
+  react: React.ReactElement;
+  /** Replies go here instead of the sender (e.g. the person who filled in a form). */
+  replyTo?: { address: string; name?: string | null };
+}): Promise<SendResult> {
   if (!canSendEmail()) return { ok: false, error: "Email sending isn't set up (ZEPTOMAIL_PASSWORD and EMAIL_FROM)." };
   try {
     const html = await render(opts.react);
@@ -33,6 +40,7 @@ export async function sendEmail(opts: { to: string; toName?: string | null; subj
         from: parseFrom(env.EMAIL_FROM!),
         to: [{ email_address: { address: opts.to, ...(opts.toName ? { name: opts.toName } : {}) } }],
         subject: opts.subject,
+        ...(opts.replyTo ? { reply_to: [{ address: opts.replyTo.address, ...(opts.replyTo.name ? { name: opts.replyTo.name } : {}) }] } : {}),
         htmlbody: html,
         textbody: text,
         track_clicks: false, // click tracking rewrites links, which would break one-time invite links

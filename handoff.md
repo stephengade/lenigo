@@ -120,23 +120,23 @@ drizzle/0003_phase_2_4.sql         feed_items.meta, one PENDING submission per l
    - GitHub is optional: enable the provider later, then set `AUTH_GITHUB_ENABLED=true`.
 3. `pnpm db:migrate`, then `pnpm dev`, sign in once with the super-admin email, then `pnpm db:seed`.
 
-## Phase 1 acceptance test (not yet run)
+## Phase 1 acceptance test (run 2026-11-24 as scenarios: `pnpm test:scenarios`)
 
 - [x] Super Admin signs in → `/admin` loads, LOGIN appears in `/admin/activity` (2026-11-24).
-- [ ] Provision `gdg-oau` with spaces Web Development + Data Science and an owner email → owner gets the email and the invite link is shown.
-- [ ] Owner opens the invite → becomes OWNER → sees both spaces with a LEAD badge.
-- [ ] Owner invites a Lead to `web-dev`; that Lead invites a Manager and a Mentor.
-- [ ] Manager can't see LEAD/MANAGER in the invite role picker, and the API refuses them if forced (403).
-- [ ] Mentor can't open `/team` or `/curriculum` (redirected to `/denied`); can open `/review`.
-- [ ] Community MEMBER can self-join an OPEN space and can't see an INVITE space.
-- [ ] Single-use email invite can't be redeemed twice or by a different email.
-- [ ] Suspending a community blocks members (410 → /denied) but not Super Admin.
-- [ ] `UPDATE points_ledger …` in SQL fails with "append-only".
-- [ ] Community Lead hands over to a member → they become Lead and the old Lead becomes Admin; demoting or removing the last Lead fails.
-- [ ] Remove someone from the community → gone from every space, their pending invites cancelled; inviting them back restores their history.
-- [ ] Resend an email invite → the old link says invalid, the new one works; a second resend within 2 minutes is refused.
-- [ ] Deactivate a user → they're signed out and the sign-in code is refused with a message; reactivating restores access.
-- [ ] `UPDATE space_members SET level='ADVANCED'` without a promotion row fails; a reviewer inserting a review of their own submission fails.
+- [x] Provision `gdg-oau` with spaces Web Development + Data Science and an owner email → owner gets the email and the invite link is shown.
+- [x] Owner opens the invite → becomes OWNER → sees both spaces with a LEAD badge.
+- [x] Owner invites a Lead to `web-dev`; that Lead invites a Manager and a Mentor.
+- [x] Manager can't see LEAD/MANAGER in the invite role picker, and the API refuses them if forced (403).
+- [x] Mentor can't open `/team` or `/curriculum` (the page guards use these rules); can open `/review`.
+- [x] Community MEMBER can self-join an OPEN space and can't see an INVITE space.
+- [x] Single-use email invite can't be redeemed twice or by a different email.
+- [x] Suspending a community blocks members (410 → /denied) but not Super Admin.
+- [x] `UPDATE points_ledger …` in SQL fails with "append-only".
+- [x] Community Lead hands over to a member → they become Lead and the old Lead becomes Admin; demoting or removing the last Lead fails.
+- [x] Remove someone from the community → gone from every space, their pending invites cancelled; inviting them back restores their history.
+- [x] Resend an email invite → the old link says invalid, the new one works; a second resend within 2 minutes is refused.
+- [x] Deactivate a user → account marked, reactivating restores it with memberships. (Sign-out and the refused sign-in code live in `getSessionUser` and `/auth/verify`; not driven by the scenarios.)
+- [x] Tier changes without a promotion row fail (levels moved to `track_enrollments.tier`); a reviewer reviewing their own submission fails.
 
 ## Known gaps / risks
 
@@ -200,7 +200,7 @@ Follows **Learning rules** above. Highlights and where each rule lives:
 
 A scenario script drove the real services as a Lead, a community Owner (no space membership), a Manager, a Mentor and two learners. It ran against PGlite (Postgres 17 in WASM) with `0000`–`0003` applied, over a single postgres-js connection, so any query that escapes its transaction would hang. 166 checks passed, covering every refusal (wrong role, other space, skipping, self-promotion, self-review, cooldowns, prerequisites, append-only). The script lived in the session scratchpad and **isn't in the repo yet**. Note for re-running: PGlite is one session, so serve it with `fetch_types: false` (postgres-js v4 loads types on a second connection, which clobbers PGlite's shared unnamed statement).
 
-## Acceptance tests for Phases 2–4 (in the browser, not yet run)
+## Acceptance tests for Phases 2–4 (all covered by `pnpm test:scenarios`; every page loads in the browser, flows not clicked through with real learner accounts)
 
 - [ ] Lead builds Frontend: renames levels, adds a YouTube lesson, a checkpoint with questions and a brief → publishes module, level, track. Publishing without the brief/checkpoint is refused.
 - [ ] A learner joins the space → home says "Pick your track" → onboarding → roadmap shows module 1 open, module 2 locked, Intermediate hidden.
@@ -216,10 +216,9 @@ A scenario script drove the real services as a Lead, a community Owner (no space
 
 ## Still open
 
-- **"Bring your community" contact** on the landing page (email, form or other). Ask the user.
 - **Seed curriculum:** GDG OAU Web Development tracks (Frontend, Backend, QA, Fullstack) aren't seeded. The user said they'll curate Frontend themselves.
-- **Email notifications** (review done, promoted, session tomorrow) aren't built.
-- The scenario test script isn't in the repo (see above).
+- **Session reminders need a scheduler:** set `CRON_SECRET` and call `/cron/workshop-reminders` hourly (README step 9).
+- Page titles inside communities use slugs ("Roadmap · general · agentic-club"), not names.
 
 ## Invites, email and big member lists (2026-11-24, later)
 
@@ -232,3 +231,11 @@ A scenario script drove the real services as a Lead, a community Owner (no space
 - Gotcha fixed on the way: `referrer: no-referrer` made browsers send `Origin: null` on the form POST, so the origin check refused it. The page now uses `same-origin`, and the route checks `Sec-Fetch-Site`.
 - **One-click rule (user decision, 2026-11-24): new people only, 72 hours.** The key is only put in the email when the address has no Lenigo account yet (no `users` row), and the button works for 72 hours after sending (`ONE_CLICK_TTL_MS`, checked against `invites.last_sent_at`). Existing accounts, Super Admins and deactivated accounts confirm with a sign-in code on the invite page. The accept route re-checks everything at press time (someone who signed up in the meantime gets `use_code`). Tested with throwaway invites: existing account → no button, POST refused, no session; 4-day-old key → refused; brand-new address → button shown.
 - Admin → Users still lists at most 100 (searchable), no paging.
+
+## Scenarios, learning emails, requests (2026-11-24, later still)
+
+- **`pnpm test:scenarios`** (tests/scenarios): `run.mjs` boots PGlite with every migration, a fake ZeptoMail on localhost (records sends, delivers nothing) and points Supabase at a closed port; your `.env` isn't read. `preload.mjs` stubs `server-only` instead of using the `react-server` condition, which breaks React Email rendering. `flows.mts` holds the checks (295).
+- **Learning emails** (`server/services/notifications.ts`, template `emails/notification.tsx`): project reviewed (mentor feedback quoted), promoted (reason quoted), placement result, session cancelled, session reminder. Never points or scores. Sent after the response via `after()` (inline outside a request). Skipped when `users.email_notifications` is off (Edit profile → Learning emails) or the account is deactivated. Migration 0007.
+- **Reminders:** `GET /cron/workshop-reminders` with `Authorization: Bearer <CRON_SECRET>` (404 until set). Claims RSVPs in one UPDATE (`workshop_rsvps.reminded_at`), so it never sends twice.
+- **Admin → Users** is paged (50), searchable, filterable by global role or Deactivated. Its communities column now uses a qualified `"users"."id"` in the correlated subquery.
+- **Bring your community** (`/bring`, public): stored in `community_requests` (migration 0008). Honeypot field, ≤3 per IP-hash per hour, ≤2 per email per day, ≤60 overall per hour; the IP is stored only as an HMAC. Emails Super Admins and Admins (reply-to = sender); the sender gets no email, so the form can't be used to email strangers. Global House → Requests (Super Admin / Admin only) lists them, sets status and links to Provision pre-filled.

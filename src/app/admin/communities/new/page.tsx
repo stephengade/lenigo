@@ -8,9 +8,10 @@ import { global } from "@/lib/permissions";
 
 export const metadata = { title: "Provision community" };
 
-export default async function NewCommunityPage() {
+export default async function NewCommunityPage({ searchParams }: { searchParams: Promise<{ name?: string; owner?: string }> }) {
   const user = await pageGlobalHouse();
   if (!global.canProvision(user.globalRole)) notFound();
+  const { name, owner } = await searchParams;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -22,7 +23,7 @@ export default async function NewCommunityPage() {
         title="Provision a community"
         description="Creates the community and its spaces, makes the person you name its Community Lead, and emails them the invite."
       />
-      <ProvisionForm />
+      <ProvisionForm initial={{ name: name?.slice(0, 80), ownerEmail: owner?.slice(0, 254) }} />
     </div>
   );
 }

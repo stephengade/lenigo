@@ -136,4 +136,6 @@ Errors are JSON `{ error: string }` with a meaningful status (401/403/404/409/41
 - [x] **Phase 3:** standups, feed with reactions and comments, review queue, streak engine, points ledger, leaderboards.
 - [x] **Phase 4:** workshops, RSVP with live-review queue, public profiles `/u/[username]`.
 
-Phases 2–4 are tested at the service level against Postgres (see handoff.md → "How Phases 2–4 were tested"); the signed-in pages still need a pass in the browser once Supabase is connected.
+- [x] **Since:** emailed invites (ZeptoMail + React Email, one-click for new people), paged member and user lists, learning emails with an opt-out, session reminders (`/cron/workshop-reminders`), and "Bring your community" (`/bring` → Global House → Requests).
+
+`pnpm test:scenarios` drives the real services as every role (Super Admin, Community Lead, Space Lead, Manager, Mentor, learners) against a throwaway Postgres: 295 checks covering Phase 1–4 rules, people management, emails and the request form. Every signed-in page loads in the browser for a Community Lead / Super Admin; flows that need several real accounts (a learner and a mentor side by side) are covered by the scenarios, not clicked through.

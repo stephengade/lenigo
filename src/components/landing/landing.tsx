@@ -75,8 +75,8 @@ function useStart() {
   return signedIn ? { href: "/c", label: "Go to your communities" } : { href: "/login", label: "Join with your invite" };
 }
 
-/** Community leads don't self-serve yet: communities are provisioned by the Lenigo team. */
-const BRING_HREF = "#bring-your-community";
+/** Community leads don't self-serve yet: they send a request (/bring) and the Lenigo team provisions it. */
+const BRING_HREF = "/bring";
 
 function PrimaryCta({ className }: { className?: string }) {
   const start = useStart();

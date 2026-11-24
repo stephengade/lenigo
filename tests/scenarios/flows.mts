@@ -652,6 +652,32 @@ check("Deactivated filter and count", off.total === 1 && off.counts.DEACTIVATED 
 const p1row = (await Adm.pageUsers({ q: "p1-lead" })).rows[0];
 check("communities column lists the right community", JSON.stringify(p1row?.communities) === '["gdg-oau"]', JSON.stringify(p1row?.communities));
 
+console.log("\nBring your community (public form)");
+const R = await import("@/server/services/community-requests");
+await clearMail();
+const goodReq = { name: "Ada", email: "Ada@Example.test", communityName: "GDG Ibadan", size: "200–1,000", location: "Ibadan", about: "Weekly web study jams; we want mentors to review projects.", link: "https://gdg.example.test" };
+await ok("a request is accepted", () => R.submitCommunityRequest(goodReq, "203.0.113.7"));
+const stored = await db.select().from(S.communityRequests);
+check("stored with a hashed IP, not the IP", stored.length === 1 && !!stored[0].ipHash && stored[0].ipHash !== "203.0.113.7" && stored[0].email === "ada@example.test");
+const teamMail = await mailsTo("root@example.test");
+check("the team is emailed, reply-to the sender", teamMail.length === 1 && teamMail[0].subject === "New community request: GDG Ibadan" && JSON.stringify(teamMail[0]).includes('"reply_to":[{"address":"ada@example.test"'));
+check("the sender gets no email (the form can't spam strangers)", (await mailsTo("ada@example.test")).length === 0);
+await ok("honeypot: pretend success, store nothing", () => R.submitCommunityRequest({ ...goodReq, email: "bot@example.test", website: "http://spam" }, "203.0.113.8"));
+check("bot request not stored", (await db.select().from(S.communityRequests)).length === 1);
+await refuses("about must say something", () => R.submitCommunityRequest({ ...goodReq, about: "hi" }, "203.0.113.9"), /a little about/);
+await refuses("size must be one of the options", () => R.submitCommunityRequest({ ...goodReq, size: "lots" }, "203.0.113.9"), /Pick a size/);
+await refuses("links must be https", () => R.submitCommunityRequest({ ...goodReq, link: "javascript:alert(1)" }, "203.0.113.9"), /https/);
+await ok("same email, second request today", () => R.submitCommunityRequest({ ...goodReq, communityName: "GDG Ibadan 2" }, "203.0.113.10"));
+await refuses("third from the same email today is refused", () => R.submitCommunityRequest({ ...goodReq, communityName: "GDG Ibadan 3" }, "203.0.113.11"), /already got/);
+for (let i = 0; i < 3; i++) await R.submitCommunityRequest({ ...goodReq, email: `ip${i}@example.test` }, "198.51.100.1");
+await refuses("fourth from one IP within an hour is refused", () => R.submitCommunityRequest({ ...goodReq, email: "ip9@example.test" }, "198.51.100.1"), /already got/);
+await refuses("only Super Admins/Admins list requests", () => R.listCommunityRequests(pLead), /permission/);
+const listed = await R.listCommunityRequests(root);
+check("open requests listed newest first", listed.rows.length === 5 && listed.counts.NEW === 5);
+await ok("mark one contacted", () => R.setCommunityRequestStatus(root, listed.rows[0].r.id, "CONTACTED"));
+check("status and handler recorded", (await R.listCommunityRequests(root, "CONTACTED")).rows[0]?.handledBy === "P1 root");
+await refuses("a regular user can't change status", () => R.setCommunityRequestStatus(pLead, listed.rows[0].r.id, "DECLINED"), /permission/);
+
 console.log(`\n${pass} passed, ${failCount} failed`);
 if (failures.length) console.log("FAILURES:\n- " + failures.join("\n- "));
 process.exit(failCount ? 1 : 0);

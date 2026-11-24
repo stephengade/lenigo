@@ -16,14 +16,15 @@ const SUGGESTIONS = ["Web Development", "Data Science", "Mobile Development", "C
 
 type Result = { slug: string; spaces: string[]; ownerInviteUrl: string; emailed: boolean; emailError?: string; ownerAlreadyMember: boolean };
 
-export function ProvisionForm() {
+/** `initial` pre-fills the form, e.g. from a community request. */
+export function ProvisionForm({ initial }: { initial?: { name?: string; ownerEmail?: string } } = {}) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [name, setName] = useState("");
+  const [name, setName] = useState(initial?.name ?? "");
   const [slug, setSlug] = useState("");
   const [slugTouched, setSlugTouched] = useState(false);
   const [description, setDescription] = useState("");
-  const [ownerEmail, setOwnerEmail] = useState("");
+  const [ownerEmail, setOwnerEmail] = useState(initial?.ownerEmail ?? "");
   const [spaces, setSpaces] = useState<string[]>([]);
   const [draft, setDraft] = useState("");
   const [result, setResult] = useState<Result | null>(null);

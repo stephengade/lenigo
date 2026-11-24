@@ -39,6 +39,8 @@ export const ACTION_TYPES = [
   "WORKSHOP_CREATED",
   "WORKSHOP_CANCELLED",
   "PROFILE_UPDATED",
+  "COMMUNITY_REQUESTED",
+  "COMMUNITY_REQUEST_UPDATED",
 ] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
 

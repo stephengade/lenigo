@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, ArrowLeft, Building2, LayoutDashboard, Users } from "lucide-react";
+import { Activity, ArrowLeft, Building2, Inbox, LayoutDashboard, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ITEMS = [
@@ -10,13 +10,15 @@ const ITEMS = [
   { href: "/admin/communities", label: "Communities", icon: Building2 },
   { href: "/admin/activity", label: "Activity", icon: Activity },
   { href: "/admin/users", label: "Users", icon: Users },
+  { href: "/admin/requests", label: "Requests", icon: Inbox, provisionOnly: true },
 ];
 
-export function AdminNav() {
+/** `canProvision`: Super Admins and Admins also see community requests (they hold contact details). */
+export function AdminNav({ canProvision = false }: { canProvision?: boolean }) {
   const pathname = usePathname();
   return (
     <nav className="flex gap-1 overflow-x-auto px-3 pb-3 md:flex-col md:overflow-visible md:pb-0" aria-label="Global House">
-      {ITEMS.map(({ href, label, icon: Icon, exact }) => {
+      {ITEMS.filter((i) => canProvision || !("provisionOnly" in i)).map(({ href, label, icon: Icon, exact }) => {
         const active = exact ? pathname === href : pathname.startsWith(href);
         return (
           <Link

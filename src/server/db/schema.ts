@@ -1014,6 +1014,39 @@ export const workshopRsvps = pgTable(
   (t) => [primaryKey({ columns: [t.workshopId, t.userId] })],
 ).enableRLS();
 
+/* ───────────────────────── Community requests ───────────────────── */
+
+export const communityRequestStatus = pgEnum("community_request_status", ["NEW", "CONTACTED", "PROVISIONED", "DECLINED"]);
+
+/**
+ * "Bring your community" form on the landing page. Public, so it's rate-limited by a salted hash
+ * of the sender's IP (the IP itself isn't stored) and by email. Super Admins and Admins follow up
+ * from Global House → Requests.
+ */
+export const communityRequests = pgTable(
+  "community_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    email: text("email").notNull(),
+    communityName: text("community_name").notNull(),
+    size: text("size").notNull(),
+    location: text("location"),
+    about: text("about").notNull(),
+    link: text("link"),
+    ipHash: text("ip_hash"),
+    status: communityRequestStatus("status").notNull().default("NEW"),
+    handledById: uuid("handled_by_id").references(() => users.id, { onDelete: "set null" }),
+    handledAt: timestamp("handled_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("community_requests_created_idx").on(t.createdAt.desc()),
+    index("community_requests_ip_idx").on(t.ipHash, t.createdAt),
+    index("community_requests_email_idx").on(sql`lower(${t.email})`, t.createdAt),
+  ],
+).enableRLS();
+
 /* ───────────────────────────── Types ───────────────────────────── */
 
 export type User = typeof users.$inferSelect;
