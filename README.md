@@ -116,6 +116,7 @@ Wherever you deploy:
 - Use the **transaction pooler** (port 6543) for `DATABASE_URL` on serverless targets (Vercel, Amplify). On a VPS either pooler works.
 - Set `NEXT_PUBLIC_APP_URL` to the public URL, and add `https://your-domain/**` to Supabase's redirect URLs.
 - Run `pnpm db:migrate` from CI or your machine (it uses `DIRECT_URL`), not from the app server.
+- **Migrate before you merge.** When a change adds a file to `drizzle/`, run `pnpm db:migrate` against production first, then merge. On Vercel, production builds run `scripts/check-migrations.mjs` and fail if the database is missing a migration, so the previous deployment stays live instead of every page erroring with `column … does not exist`. If that happens, migrate and press Redeploy. `pnpm db:status` runs the same check from your machine.
 
 ## API
 

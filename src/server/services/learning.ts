@@ -743,7 +743,7 @@ export async function submitProject(a: MemberAccess, moduleId: string, input: { 
 /** A learner's approved capstone projects (public profile). */
 export async function approvedProjects(userId: string) {
   return db
-    .select({ id: submissions.id, repoUrl: submissions.repoUrl, liveUrl: submissions.liveUrl, reviewedAt: submissions.reviewedAt, module: modules.title, summary: modules.summary, track: tracks.title })
+    .select({ id: submissions.id, repoUrl: submissions.repoUrl, liveUrl: submissions.liveUrl, reviewedAt: submissions.reviewedAt, module: modules.title, track: tracks.title })
     .from(submissions)
     .innerJoin(modules, eq(modules.id, submissions.moduleId))
     .innerJoin(levels, eq(levels.id, modules.levelId))

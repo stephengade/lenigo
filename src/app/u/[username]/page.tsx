@@ -135,7 +135,6 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
                     </div>
                     <div className={cn("flex flex-1 flex-col p-5", featured && "sm:p-7")}>
                       <h3 className={cn("font-display font-bold break-words", featured ? "text-2xl sm:text-3xl" : "text-xl")}>{p.module}</h3>
-                      {p.summary ? <p className={cn("mt-2 text-sm text-muted-foreground", featured ? "line-clamp-4 sm:max-w-2xl sm:text-base" : "line-clamp-3")}>{p.summary}</p> : null}
                       <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-2 pt-5 text-sm">
                         <a href={p.repoUrl} target="_blank" rel="noopener noreferrer nofollow" className="inline-flex min-w-0 items-center gap-1.5 font-medium text-primary hover:underline">
                           <FolderGit2 className="size-4 shrink-0" /> <span className="truncate">{shortUrl(p.repoUrl)}</span>
