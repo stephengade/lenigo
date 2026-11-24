@@ -38,7 +38,7 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
   const [role, setRole] = useState<Role>(roles.includes("MEMBER") ? "MEMBER" : roles[roles.length - 1]);
   const [email, setEmail] = useState("");
   const [maxUses, setMaxUses] = useState<string>("");
-  const [expiresInDays, setExpiresInDays] = useState("7");
+  const [expiresInDays, setExpiresInDays] = useState("14"); // email is the default mode, and email invites last 14 days
   const [result, setResult] = useState<{ url: string; emailed: boolean; emailError?: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [pending, start] = useTransition();
@@ -170,7 +170,7 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
             <p className="mt-2 text-xs text-muted-foreground">
               {mode === "email"
                 ? result.emailed
-                  ? "We also emailed them this invite and a sign-in code."
+                  ? "We also emailed them this invite. This copy of the link asks them to sign in first; the button in their email does it in one press."
                   : `Email not sent${result.emailError ? ` (${result.emailError})` : ""}. Send them this link yourself.`
                 : "Anyone with this link can join with the selected role until it expires or runs out of uses."}
             </p>
@@ -181,7 +181,7 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
       <div>
         <h3 className="mb-3 text-xs font-medium text-muted-foreground">Pending invites · {invites.length}</h3>
         {invites.some((i) => i.email) ? (
-          <p className="mb-3 text-xs text-muted-foreground">Resend gives them a new link and sign-in code; the old link stops working.</p>
+          <p className="mb-3 text-xs text-muted-foreground">Resend emails a fresh invite; the old link and email button stop working.</p>
         ) : null}
         {invites.length === 0 ? (
           <p className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">No pending invites.</p>

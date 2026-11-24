@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, Loader2, Search, X } from "lucide-react";
@@ -43,14 +43,11 @@ export function MemberFilters({
   const href = useHref();
   const [pending, start] = useTransition();
   const [q, setQ] = useState(params.get("q") ?? "");
-  const first = useRef(true);
 
   // Search as you type, a moment after the last keystroke.
   useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return;
-    }
+    // Only navigate when the box differs from the URL (not on mount, which dev runs twice).
+    if (q.trim() === (params.get("q") ?? "")) return;
     const t = setTimeout(() => start(() => router.replace(href({ q: q.trim() || null, page: null }), { scroll: false })), 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps

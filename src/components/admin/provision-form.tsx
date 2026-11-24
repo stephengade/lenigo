@@ -87,7 +87,7 @@ export function ProvisionForm() {
               ? "They already had an account, so they're Community Lead now. "
               : ""}
             {result.emailed
-              ? "We emailed them this invite and a sign-in code."
+              ? "We emailed them this invite."
               : `The email didn't send${result.emailError ? ` (${result.emailError})` : ""}. Send them this link yourself.`}
           </p>
         </div>
