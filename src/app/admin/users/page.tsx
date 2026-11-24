@@ -1,21 +1,21 @@
 import Link from "next/link";
 import { formatDistanceToNowStrict } from "date-fns";
-import { Search } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { UserAvatar } from "@/components/user-avatar";
 import { RoleBadge } from "@/components/role-badge";
 import { GlobalRoleSelect } from "@/components/admin/global-role-select";
 import { UserActiveToggle } from "@/components/admin/user-active-toggle";
 import { pageGlobalHouse } from "@/server/auth/guards";
-import { listUsers } from "@/server/services/admin";
-import { global } from "@/lib/permissions";
+import { pageUsers, USERS_PAGE_SIZE } from "@/server/services/admin";
+import { global, ROLE_LABEL } from "@/lib/permissions";
+import { MemberFilters, MemberPager } from "@/components/community/member-directory";
 
 export const metadata = { title: "Users" };
 
-export default async function AdminUsersPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+export default async function AdminUsersPage({ searchParams }: { searchParams: Promise<{ q?: string; role?: string; page?: string }> }) {
   const me = await pageGlobalHouse();
-  const { q } = await searchParams;
-  const rows = await listUsers(q?.slice(0, 120));
+  const sp = await searchParams;
+  const { rows, page, role, counts, all, total } = await pageUsers({ q: sp.q, role: sp.role, page: Number(sp.page) });
   const canAssign = global.canAssignGlobalRoles(me.globalRole);
   const canDeactivate = global.canDeactivateUsers(me.globalRole);
 
@@ -31,18 +31,19 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
         }
       />
 
-      <form action="/admin/users" className="relative mb-6">
-        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-        <input
-          name="q"
-          defaultValue={q ?? ""}
-          placeholder="Search by email, name or GitHub handle"
-          className="h-11 w-full rounded-full border border-input bg-card pr-4 pl-10 text-sm shadow-xs outline-none focus-visible:border-primary focus-visible:ring-4 focus-visible:ring-ring/15"
-        />
-      </form>
+      <MemberFilters
+        roles={[
+          ...(["SUPER_ADMIN", "ADMIN", "VIEWER", "USER"] as const).map((r) => ({ value: r, label: ROLE_LABEL[r] })),
+          { value: "DEACTIVATED", label: "Deactivated" },
+        ]}
+        counts={counts}
+        all={all}
+        active={role}
+        placeholder="Search by email, name or GitHub handle"
+      />
 
       <ul className="divide-y divide-border rounded-2xl bg-card shadow-card ring-1 ring-foreground/5">
-        {rows.length === 0 ? <li className="px-4 py-10 text-center text-sm text-muted-foreground">No users found.</li> : null}
+        {rows.length === 0 ? <li className="px-4 py-10 text-center text-sm text-muted-foreground">{sp.q || role ? "No one matches." : "No users yet."}</li> : null}
         {rows.map((u) => (
           <li key={u.id} className="flex flex-wrap items-center gap-3 px-4 py-3 sm:flex-nowrap">
             <UserAvatar name={u.name} email={u.email} src={u.avatarUrl} />
@@ -75,6 +76,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
           </li>
         ))}
       </ul>
+      <MemberPager page={page} pageSize={USERS_PAGE_SIZE} total={total} />
     </div>
   );
 }

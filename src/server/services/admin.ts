@@ -1,11 +1,12 @@
 import "server-only";
-import { and, desc, eq, ilike, lt, or, sql, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, ilike, isNotNull, lt, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/server/db";
 import { activityLogs, communities, communityMembers, spaces, users, type User } from "@/server/db/schema";
 import { logActivity } from "@/server/activity";
 import { fail } from "@/server/auth/access";
 import { env } from "@/server/env";
-import { global, type GlobalRole } from "@/lib/permissions";
+import { global, GLOBAL_ROLES, type GlobalRole } from "@/lib/permissions";
+import { memberSearch, pageOf } from "@/server/services/communities";
 
 export type ActivityFilters = {
   community?: string; // slug
@@ -52,10 +53,22 @@ export async function listActivity(filters: ActivityFilters) {
   return { items, nextCursor: hasMore ? items[items.length - 1].id : null };
 }
 
-export async function listUsers(q?: string, limit = 100) {
-  const search = q?.trim() ? `%${q.trim().replace(/[%_]/g, "")}%` : null;
-  return db
-    .select({
+export const USERS_PAGE_SIZE = 50;
+
+/**
+ * One page of everyone on the platform for Admin → Users: search (name, email, GitHub), a filter by
+ * global role or "deactivated", and counts for the filter chips. Super Admins and Admins come first.
+ */
+export async function pageUsers(query: { q?: string; role?: string; page?: number }) {
+  const role = (GLOBAL_ROLES as readonly string[]).includes(query.role ?? "") ? (query.role as GlobalRole) : undefined;
+  const deactivated = query.role === "DEACTIVATED";
+  const search = memberSearch(query.q);
+  const page = pageOf(query.page);
+  const filter = deactivated ? isNotNull(users.deactivatedAt) : role ? eq(users.globalRole, role) : undefined;
+
+  const [rows, byRole, [{ off }]] = await Promise.all([
+    db
+      .select({
       id: users.id,
       email: users.email,
       name: users.name,
@@ -65,12 +78,21 @@ export async function listUsers(q?: string, limit = 100) {
       createdAt: users.createdAt,
       lastSeenAt: users.lastSeenAt,
       deactivatedAt: users.deactivatedAt,
-      communities: sql<string[]>`coalesce((select array_agg(c.slug order by c.slug) from ${communityMembers} cm join ${communities} c on c.id = cm.community_id where cm.user_id = ${users.id}), '{}')`,
-    })
-    .from(users)
-    .where(search ? or(ilike(users.email, search), ilike(users.name, search), ilike(users.githubUsername, search)) : undefined)
-    .orderBy(sql`array_position(array['SUPER_ADMIN','ADMIN','VIEWER','USER']::global_role[], ${users.globalRole})`, desc(users.createdAt))
-    .limit(limit);
+        // Qualified outer column: a bare ${users.id} here would bind to c.id inside the subquery.
+        communities: sql<string[]>`coalesce((select array_agg(c.slug order by c.slug) from ${communityMembers} cm join ${communities} c on c.id = cm.community_id where cm.user_id = "users"."id"), '{}')`,
+      })
+      .from(users)
+      .where(and(search, filter))
+      .orderBy(sql`array_position(array['SUPER_ADMIN','ADMIN','VIEWER','USER']::global_role[], ${users.globalRole})`, desc(users.createdAt), desc(users.id))
+      .limit(USERS_PAGE_SIZE)
+      .offset((page - 1) * USERS_PAGE_SIZE),
+    db.select({ role: users.globalRole, n: count() }).from(users).where(search).groupBy(users.globalRole),
+    db.select({ off: count() }).from(users).where(and(search, isNotNull(users.deactivatedAt))),
+  ]);
+  const counts: Record<string, number> = Object.fromEntries(byRole.map((r) => [r.role, r.n]));
+  counts.DEACTIVATED = off;
+  const all = byRole.reduce((a, r) => a + r.n, 0);
+  return { rows, page, role: deactivated ? "DEACTIVATED" : role, counts, all, total: deactivated ? off : role ? (counts[role] ?? 0) : all };
 }
 
 export async function setGlobalRole(actor: User, targetUserId: string, role: GlobalRole) {

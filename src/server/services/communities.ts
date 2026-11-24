@@ -323,14 +323,14 @@ export const MEMBERS_PAGE_SIZE = 50;
 export type MemberQuery = { q?: string; role?: string; page?: number };
 
 /** Case-insensitive match on name, email or GitHub handle; LIKE wildcards in the input are literal. */
-function memberSearch(q: string | undefined) {
+export function memberSearch(q: string | undefined) {
   const term = q?.trim().slice(0, 100);
   if (!term) return undefined;
   const like = `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
   return sql`(${users.name} ilike ${like} or ${users.email} ilike ${like} or ${users.githubUsername} ilike ${like})`;
 }
 
-const pageOf = (page: number | undefined) => Math.max(1, Math.floor(page ?? 1) || 1);
+export const pageOf = (page: number | undefined) => Math.max(1, Math.floor(page ?? 1) || 1);
 
 /**
  * One page of a community's members, plus how many match and a count per role (for the filter

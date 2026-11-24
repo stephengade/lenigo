@@ -635,6 +635,23 @@ const { NextRequest } = await import("next/server");
 const cronRes = await cronRoute.GET(new NextRequest("http://localhost:3000/cron/workshop-reminders"));
 check("off without CRON_SECRET (404)", cronRes.status === 404);
 
+console.log("\nAdmin → Users paging");
+await db.insert(S.users).values(Array.from({ length: 60 }, (_, i) => ({ id: uid(), email: `bulk${String(i).padStart(2, "0")}@example.test`, name: `Bulk ${i}`, username: `bulk-${i}` })));
+const pg1 = await Adm.pageUsers({});
+check("first page holds 50, total counts everyone", pg1.rows.length === 50 && pg1.total === pg1.all && pg1.all >= 74, `${pg1.rows.length}/${pg1.total}`);
+check("Super Admins come first", pg1.rows[0].globalRole === "SUPER_ADMIN");
+const pg2 = await Adm.pageUsers({ page: 2 });
+check("page 2 has the rest, no overlap", pg2.rows.length === pg1.all - 50 && !pg2.rows.some((r) => pg1.rows.some((x) => x.id === r.id)));
+const bulk = await Adm.pageUsers({ q: "bulk0" });
+check("search narrows (bulk00–bulk09)", bulk.total === 10 && bulk.rows.length === 10);
+check("LIKE wildcards are literal", (await Adm.pageUsers({ q: "bulk_" })).total === 0);
+check("filter by role", (await Adm.pageUsers({ role: "SUPER_ADMIN" })).rows.every((r) => r.globalRole === "SUPER_ADMIN"));
+await db.update(S.users).set({ deactivatedAt: new Date() }).where(eq(S.users.email, "bulk00@example.test"));
+const off = await Adm.pageUsers({ role: "DEACTIVATED" });
+check("Deactivated filter and count", off.total === 1 && off.counts.DEACTIVATED === 1 && off.rows[0].email === "bulk00@example.test");
+const p1row = (await Adm.pageUsers({ q: "p1-lead" })).rows[0];
+check("communities column lists the right community", JSON.stringify(p1row?.communities) === '["gdg-oau"]', JSON.stringify(p1row?.communities));
+
 console.log(`\n${pass} passed, ${failCount} failed`);
 if (failures.length) console.log("FAILURES:\n- " + failures.join("\n- "));
 process.exit(failCount ? 1 : 0);
