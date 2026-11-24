@@ -6,13 +6,15 @@ import { RoleBadge } from "@/components/role-badge";
 import { ButtonLink } from "@/components/button-link";
 import { requireUser } from "@/server/auth/session";
 import { listMyCommunities } from "@/server/services/communities";
+import { listMyPendingInvites } from "@/server/services/invites";
+import { PendingInvites } from "@/components/community/pending-invites";
 import { global } from "@/lib/permissions";
 
 export const metadata = { title: "My communities" };
 
 export default async function MyCommunitiesPage() {
   const user = await requireUser("/c");
-  const communities = await listMyCommunities(user);
+  const [communities, invites] = await Promise.all([listMyCommunities(user), listMyPendingInvites(user)]);
   const staff = global.canEnterHouse(user.globalRole);
 
   return (
@@ -32,7 +34,9 @@ export default async function MyCommunitiesPage() {
           }
         />
 
-        {communities.length === 0 ? (
+        {invites.length ? <PendingInvites invites={invites} /> : null}
+
+        {communities.length === 0 && invites.length ? null : communities.length === 0 ? (
           <EmptyState
             icon={<Compass />}
             title="You're not in a community yet"

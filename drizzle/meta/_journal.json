@@ -29,6 +29,13 @@
       "when": 1795509261118,
       "tag": "0003_phase_2_4",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795538160162,
+      "tag": "0004_append_only_deletes",
+      "breakpoints": true
     }
   ]
 }

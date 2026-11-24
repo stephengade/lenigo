@@ -15,7 +15,7 @@ import {
   removeSpaceMember,
   setCommunityStatus,
 } from "@/server/services/communities";
-import { createCommunityInvite, createSpaceInvite, redeemInvite, revokeInvite } from "@/server/services/invites";
+import { createCommunityInvite, createSpaceInvite, redeemInvite, redeemMyInvite, revokeInvite } from "@/server/services/invites";
 import { listActivity, setGlobalRole } from "@/server/services/admin";
 import { community as communityRules, global, space as spaceRules } from "@/lib/permissions";
 
@@ -174,9 +174,16 @@ export const app = new Elysia({ prefix: "/api" })
   )
 
   /* ── Invites ────────────────────────────────────────────────── */
-  .post("/invites/:token/redeem", ({ user, params }) => redeemInvite(user, params.token), {
+  // Handlers that can fail must be `async`: Elysia reads the source to pick its wrapper, and a
+  // plain arrow returning a rejected promise skips onError (the client got an empty 500).
+  .post("/invites/:token/redeem", async ({ user, params }) => await redeemInvite(user, params.token), {
     auth: true,
     params: t.Object({ token: t.String({ minLength: 16, maxLength: 64 }) }),
+  })
+  // Accept an invite sent to the signed-in user's own email, from /c (no link needed).
+  .post("/me/invites/:id/accept", async ({ user, params }) => await redeemMyInvite(user, params.id), {
+    auth: true,
+    params: t.Object({ id: t.String({ format: "uuid", error: "Invalid invite." }) }),
   })
 
   /* ── Community scope: /api/c/:community/… ───────────────────── */

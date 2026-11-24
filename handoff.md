@@ -129,7 +129,9 @@ drizzle/0003_phase_2_4.sql         feed_items.meta, one PENDING submission per l
 
 ## Known gaps / risks
 
-- **Not run on Supabase yet.** Services and migrations ran on PGlite (Postgres 17); Supabase may differ in small ways (pooler, extensions). The `array_position(...::space_role[])` ordering in Phase 1 wasn't covered by the scenarios.
+- **Running on Supabase since 2026-11-24.** All migrations applied; email-code sign-in works. The `array_position(...::space_role[])` ordering in Phase 1 wasn't covered by the scenarios.
+- **Transaction pooler + query pipelining = hang.** Supabase's transaction pooler (6543) froze any query that postgres-js pipelined onto a busy connection (a page running more queries at once than `max` hung until the statement timeout). `src/server/db/index.ts` sets `max_pipeline: 1`, plus queue/query timeouts. Keep it.
+- **Append-only means no DELETE either** (migration 0004). Direct deletes on `points_ledger`, `activity_logs`, `level_promotions`, `submission_reviews`, `quiz_attempts` and `leaderboard_snapshots` are refused; cascades from deleting a community still work.
 - `provisionCommunity` sends the owner email **inside** the transaction. If the transaction rolls back, an unused sign-in email may still have gone out. Moving the send to after commit would be cleaner.
 - Supabase's built-in SMTP is heavily rate-limited (a few emails per hour). Use custom SMTP before inviting a real cohort.
 - No test suite in the repo yet. The Phase 2–4 scenario script (see below) is the best starting point, plus unit tests for `lib/permissions.ts` and `redeemInvite`.

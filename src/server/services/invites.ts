@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash, randomBytes } from "node:crypto";
-import { and, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, or, sql, type SQL } from "drizzle-orm";
 import { createClient } from "@supabase/supabase-js";
 import { db } from "@/server/db";
 import {
@@ -250,17 +250,64 @@ function inviteProblem(invite: typeof invites.$inferSelect, status: "ACTIVE" | "
 
 /** Redeem atomically: the invite row is locked so a single-use link can't be claimed twice. */
 export async function redeemInvite(user: User, token: string): Promise<{ redirectTo: string }> {
+  return redeemWhere(user, eq(invites.tokenHash, hashToken(token)), "This invite link isn't valid.");
+}
+
+/**
+ * Accept an email invite from /c without its link: only one sent to the address the user
+ * signed in with (sign-in proves they own it), so this grants nothing the link wouldn't.
+ */
+export async function redeemMyInvite(user: User, inviteId: string): Promise<{ redirectTo: string }> {
+  return redeemWhere(
+    user,
+    and(eq(invites.id, inviteId), eq(invites.email, user.email.toLowerCase()))!,
+    "That invite isn't for this account.",
+  );
+}
+
+/** Email invites waiting for this user: sent to their address, still usable, not yet accepted. */
+export async function listMyPendingInvites(user: User) {
+  const rows = await db
+    .select({
+      id: invites.id,
+      communityName: communities.name,
+      spaceName: spaces.name,
+      communityRole: invites.communityRole,
+      spaceRole: invites.spaceRole,
+      expiresAt: invites.expiresAt,
+      invitedBy: users.name,
+    })
+    .from(invites)
+    .innerJoin(communities, eq(communities.id, invites.communityId))
+    .leftJoin(spaces, eq(spaces.id, invites.spaceId))
+    .leftJoin(users, eq(users.id, invites.createdById))
+    .where(
+      and(
+        eq(invites.email, user.email.toLowerCase()),
+        isNull(invites.revokedAt),
+        gt(invites.expiresAt, new Date()),
+        or(isNull(invites.maxUses), sql`${invites.uses} < ${invites.maxUses}`),
+        eq(communities.status, "ACTIVE"),
+        sql`not exists (select 1 from ${inviteRedemptions} r where r.invite_id = ${invites.id} and r.user_id = ${user.id})`,
+      ),
+    )
+    .orderBy(desc(invites.createdAt))
+    .limit(20);
+  return rows.map(({ communityRole, spaceRole, ...r }) => ({ ...r, role: (spaceRole ?? communityRole)! }));
+}
+
+async function redeemWhere(user: User, where: SQL, notFound: string): Promise<{ redirectTo: string }> {
   return db.transaction(async (tx) => {
     const [row] = await tx
       .select({ invite: invites, community: communities, space: spaces })
       .from(invites)
       .innerJoin(communities, eq(communities.id, invites.communityId))
       .leftJoin(spaces, eq(spaces.id, invites.spaceId))
-      .where(eq(invites.tokenHash, hashToken(token)))
+      .where(where)
       .for("update", { of: invites })
       .limit(1);
 
-    if (!row) throw fail.notFound("This invite link isn't valid.");
+    if (!row) throw fail.notFound(notFound);
     const { invite, community, space } = row;
     const destination = space ? `/c/${community.slug}/${space.slug}` : `/c/${community.slug}`;
 
