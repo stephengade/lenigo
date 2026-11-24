@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNowStrict } from "date-fns";
-import { Check, Copy, Link2, Loader2, Mail, Trash2 } from "lucide-react";
+import { Check, Copy, Link2, Loader2, Mail, RotateCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,8 @@ export type ActiveInvite = {
   uses: number;
   maxUses: number | null;
   expiresAt: string;
+  /** Email invites stay listed for 30 days after expiring, so they can be resent. */
+  expired: boolean;
   createdBy: string | null;
 };
 
@@ -36,7 +38,7 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
   const [role, setRole] = useState<Role>(roles.includes("MEMBER") ? "MEMBER" : roles[roles.length - 1]);
   const [email, setEmail] = useState("");
   const [maxUses, setMaxUses] = useState<string>("");
-  const [expiresInDays, setExpiresInDays] = useState("7");
+  const [expiresInDays, setExpiresInDays] = useState("14"); // email is the default mode, and email invites last 14 days
   const [result, setResult] = useState<{ url: string; emailed: boolean; emailError?: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [pending, start] = useTransition();
@@ -75,10 +77,10 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
 
   return (
     <div className="space-y-6">
-      <form onSubmit={create} className="rounded-2xl border bg-card p-5">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-base font-bold">Invite people</h2>
-          <div className="inline-flex rounded-lg border bg-muted/50 p-0.5 text-sm" role="tablist">
+      <form onSubmit={create} className="rounded-2xl bg-card shadow-card ring-1 ring-foreground/5 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-display text-lg font-bold">Invite people</h2>
+          <div className="inline-flex rounded-full bg-surface p-1 text-sm" role="tablist">
             {(
               [
                 ["email", Mail, "Email"],
@@ -96,8 +98,8 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
                   setExpiresInDays(m === "email" ? "14" : "7");
                 }}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-colors",
-                  mode === m ? "bg-card font-medium shadow-sm" : "text-muted-foreground hover:text-foreground",
+                  "inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-medium whitespace-nowrap transition-colors",
+                  mode === m ? "bg-ink text-ink-foreground" : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 <Icon className="size-3.5" /> {label}
@@ -140,7 +142,7 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
             <Label htmlFor="invite-expiry">Expires in</Label>
             <select
               id="invite-expiry"
-              className="h-8 rounded-lg border bg-background px-2 text-sm"
+              className="h-9 rounded-full border border-input bg-card px-3 text-sm shadow-xs"
               value={expiresInDays}
               onChange={(e) => setExpiresInDays(e.target.value)}
             >
@@ -158,7 +160,7 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
         </div>
 
         {result ? (
-          <div className="mt-5 rounded-xl border border-dashed bg-muted/40 p-3">
+          <div className="mt-5 rounded-xl border border-dashed bg-surface p-3">
             <div className="flex items-center gap-2">
               <code className="min-w-0 flex-1 truncate font-mono text-xs">{result.url}</code>
               <Button type="button" size="sm" variant="outline" onClick={() => copy(result.url)}>
@@ -168,7 +170,7 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
             <p className="mt-2 text-xs text-muted-foreground">
               {mode === "email"
                 ? result.emailed
-                  ? "We also emailed a sign-in link that opens this invite."
+                  ? "We also emailed them this invite. This copy of the link always asks them to sign in first."
                   : `Email not sent${result.emailError ? ` (${result.emailError})` : ""}. Send them this link yourself.`
                 : "Anyone with this link can join with the selected role until it expires or runs out of uses."}
             </p>
@@ -177,11 +179,14 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
       </form>
 
       <div>
-        <h3 className="mb-3 font-mono text-[11px] tracking-wider text-muted-foreground uppercase">Pending invites · {invites.length}</h3>
+        <h3 className="mb-3 text-xs font-medium text-muted-foreground">Pending invites · {invites.length}</h3>
+        {invites.some((i) => i.email) ? (
+          <p className="mb-3 text-xs text-muted-foreground">Resend emails a fresh invite; the old link and email button stop working.</p>
+        ) : null}
         {invites.length === 0 ? (
           <p className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">No pending invites.</p>
         ) : (
-          <ul className="divide-y rounded-xl border bg-card">
+          <ul className="divide-y divide-border rounded-2xl bg-card shadow-card ring-1 ring-foreground/5">
             {invites.map((inv) => (
               <InviteRow key={inv.id} invite={inv} scope={scope} />
             ))}
@@ -195,6 +200,27 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
 function InviteRow({ invite, scope }: { invite: ActiveInvite; scope: InviteScope }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const [resending, startResend] = useTransition();
+  const [fallbackUrl, setFallbackUrl] = useState<string | null>(null);
+
+  function resend() {
+    startResend(async () => {
+      const c = api.c({ community: scope.communitySlug });
+      const { data, error } =
+        scope.kind === "community"
+          ? await c.invites({ inviteId: invite.id }).resend.post()
+          : await c({ space: scope.spaceSlug }).invites({ inviteId: invite.id }).resend.post();
+      if (error) return void toast.error(apiError(error));
+      if (data.emailed) {
+        setFallbackUrl(null);
+        toast.success(`New invite sent to ${invite.email}. The old link no longer works.`);
+      } else {
+        setFallbackUrl(data.url);
+        toast.warning("The email didn't send. Copy the new link and send it yourself.");
+      }
+      router.refresh();
+    });
+  }
 
   function revoke() {
     start(async () => {
@@ -211,7 +237,7 @@ function InviteRow({ invite, scope }: { invite: ActiveInvite; scope: InviteScope
 
   return (
     <li className="flex items-center gap-3 px-4 py-3">
-      <div className="grid size-8 place-items-center rounded-lg bg-muted text-muted-foreground">
+      <div className="grid size-8 place-items-center rounded-lg bg-surface text-muted-foreground">
         {invite.email ? <Mail className="size-4" /> : <Link2 className="size-4" />}
       </div>
       <div className="min-w-0 flex-1">
@@ -220,12 +246,33 @@ function InviteRow({ invite, scope }: { invite: ActiveInvite; scope: InviteScope
           <RoleBadge role={invite.role} />
         </div>
         <div className="text-xs text-muted-foreground">
-          {invite.email ? "Single use" : `${invite.uses}${invite.maxUses ? ` / ${invite.maxUses}` : ""} used`} · expires{" "}
-          {formatDistanceToNowStrict(new Date(invite.expiresAt), { addSuffix: true })}
+          {invite.email ? "Single use" : `${invite.uses}${invite.maxUses ? ` / ${invite.maxUses}` : ""} used`} ·{" "}
+          {invite.expired ? (
+            <span className="font-medium text-destructive">expired {formatDistanceToNowStrict(new Date(invite.expiresAt), { addSuffix: true })}</span>
+          ) : (
+            <>expires {formatDistanceToNowStrict(new Date(invite.expiresAt), { addSuffix: true })}</>
+          )}
           {invite.createdBy ? ` · by ${invite.createdBy}` : ""}
         </div>
+        {fallbackUrl ? (
+          <button
+            type="button"
+            className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary"
+            onClick={async () => {
+              await navigator.clipboard.writeText(fallbackUrl);
+              toast.success("New link copied");
+            }}
+          >
+            <Copy className="size-3" /> Copy the new link
+          </button>
+        ) : null}
       </div>
-      <Button size="icon-sm" variant="ghost" onClick={revoke} disabled={pending} aria-label="Revoke invite">
+      {invite.email ? (
+        <Button size="sm" variant="outline" onClick={resend} disabled={resending || pending} aria-label={`Resend invite to ${invite.email}`}>
+          {resending ? <Loader2 className="animate-spin" /> : <RotateCw />} Resend
+        </Button>
+      ) : null}
+      <Button size="icon-sm" variant="ghost" onClick={revoke} disabled={pending || resending} aria-label="Revoke invite">
         {pending ? <Loader2 className="animate-spin" /> : <Trash2 />}
       </Button>
     </li>

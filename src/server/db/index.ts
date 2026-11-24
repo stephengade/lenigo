@@ -9,10 +9,21 @@ declare global {
 }
 
 function createDb() {
-  // Supabase's transaction pooler (port 6543) does not support prepared statements.
+  // Supabase's transaction pooler (port 6543):
+  // - prepare: false, because it does not support prepared statements.
+  // - max_pipeline: 1, because it hangs when a second query is pipelined onto a busy connection
+  //   (seen 2026-11-24: any page running more queries at once than `max` froze until the
+  //   statement timeout). With 1, extra queries wait for a free connection instead.
+  // - queue_timeout/query_timeout so a stuck query fails in seconds instead of freezing a page.
   const client =
     globalThis.__lenigoSql ??
-    postgres(env.DATABASE_URL, { prepare: false, max: env.NODE_ENV === "production" ? 10 : 3 });
+    postgres(env.DATABASE_URL, {
+      prepare: false,
+      max: env.NODE_ENV === "production" ? 10 : 3,
+      max_pipeline: 1,
+      queue_timeout: 20,
+      query_timeout: 30,
+    });
   if (env.NODE_ENV !== "production") globalThis.__lenigoSql = client;
   return drizzle(client, { schema });
 }

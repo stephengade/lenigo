@@ -6,7 +6,7 @@ import { global } from "@/lib/permissions";
 import type { SpaceRole } from "@/lib/permissions";
 
 /** Turn service errors into page navigation: 404 → notFound(), 403/410 → the /denied page. */
-async function guard<T>(fn: () => Promise<T>): Promise<T> {
+export async function guard<T>(fn: () => Promise<T>): Promise<T> {
   try {
     return await fn();
   } catch (e) {

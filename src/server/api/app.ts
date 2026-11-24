@@ -1,20 +1,25 @@
 import "server-only";
 import { Elysia, t } from "elysia";
-import { getSessionUser } from "@/server/auth/session";
 import { AppError, fail, getCommunityAccess, getSpaceAccess, requireSpaceRole } from "@/server/auth/access";
+import { authMacro } from "@/server/api/auth-macro";
+import { spaceRoutes } from "@/server/api/space-routes";
+import { updateProfile } from "@/server/services/profiles";
 import { ACTION_TYPES } from "@/server/activity";
 import {
   changeCommunityRole,
   changeSpaceRole,
   createSpace,
   deleteCommunity,
+  handOverLead,
   joinOpenSpace,
   provisionCommunity,
+  removeCommunityMember,
   removeSpaceMember,
   setCommunityStatus,
 } from "@/server/services/communities";
-import { createCommunityInvite, createSpaceInvite, redeemInvite, revokeInvite } from "@/server/services/invites";
-import { listActivity, setGlobalRole } from "@/server/services/admin";
+import { createCommunityInvite, createSpaceInvite, redeemInvite, redeemMyInvite, resendInvite, revokeInvite } from "@/server/services/invites";
+import { listActivity, setGlobalRole, setUserActive } from "@/server/services/admin";
+import { setCommunityRequestStatus, submitCommunityRequest } from "@/server/services/community-requests";
 import { community as communityRules, global, space as spaceRules } from "@/lib/permissions";
 
 const json = (status: number, body: unknown) =>
@@ -26,6 +31,10 @@ const json = (status: number, body: unknown) =>
  */
 function toErrorResponse(code: string | number, error: unknown): Response {
   if (error instanceof AppError) return json(error.status, { error: error.message });
+  // A DB integrity trigger refused the write (0001/0002 migrations). Its message is written for people.
+  const pg = dbError(error);
+  if (pg?.code === "P0001") return json(409, { error: pg.message.charAt(0).toUpperCase() + pg.message.slice(1) + "." });
+  if (pg?.code === "23505") return json(409, { error: "That already exists." });
   if (code === "VALIDATION") {
     const all = (error as { all?: Array<{ path?: string; schema?: { error?: string } }> }).all ?? [];
     const first = all[0];
@@ -37,6 +46,14 @@ function toErrorResponse(code: string | number, error: unknown): Response {
   if (code === "PARSE") return json(400, { error: "Malformed request body." });
   console.error("[api]", error);
   return json(500, { error: "Something went wrong on our side." });
+}
+
+/** postgres-js errors arrive directly or wrapped by Drizzle (`cause`). */
+function dbError(error: unknown): { code: string; message: string } | null {
+  for (let e = error as { code?: unknown; message?: unknown; cause?: unknown } | undefined, i = 0; e && i < 3; e = e.cause as typeof e, i++) {
+    if (typeof e.code === "string" && typeof e.message === "string" && /^[0-9A-Z]{5}$/.test(e.code)) return { code: e.code, message: e.message };
+  }
+  return null;
 }
 
 const Slug = t.String({ pattern: "^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$", error: "Use lowercase letters, numbers and hyphens." });
@@ -62,18 +79,50 @@ export const app = new Elysia({ prefix: "/api" })
   // Errors are returned as raw Responses so they don't leak into Eden's success types.
   // Clients read them as `error.value.error` (see apiError in lib/api.ts).
   .onError(({ code, error }) => toErrorResponse(code, error) as never)
-  .macro({
-    auth: {
-      async resolve() {
-        const user = await getSessionUser();
-        if (!user) throw fail.unauthorized();
-        return { user };
-      },
-    },
-  })
+  .use(authMacro)
 
   .get("/health", () => ({ ok: true, at: new Date().toISOString() }))
+  // Public: the landing page's "Bring your community" form. Rate-limited in the service.
+  .post(
+    "/community-requests",
+    async ({ body, request }) => {
+      // The proxy in front (Vercel, nginx) sets these. Unknown senders share one rate-limit bucket.
+      const ip = request.headers.get("x-real-ip") || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
+      return await submitCommunityRequest(body, ip);
+    },
+    {
+      body: t.Object({
+        name: t.String({ maxLength: 80 }),
+        email: t.String({ maxLength: 254 }),
+        communityName: t.String({ maxLength: 120 }),
+        size: t.String({ maxLength: 20 }),
+        location: t.Optional(t.Union([t.String({ maxLength: 120 }), t.Null()])),
+        about: t.String({ maxLength: 2000 }),
+        link: t.Optional(t.Union([t.String({ maxLength: 300 }), t.Null()])),
+        website: t.Optional(t.Union([t.String({ maxLength: 300 }), t.Null()])),
+      }),
+    },
+  )
   .get("/me", ({ user }) => ({ id: user.id, email: user.email, name: user.name, globalRole: user.globalRole }), { auth: true })
+  .patch(
+    "/me",
+    async ({ user, body }) => {
+      const row = await updateProfile(user, body);
+      return { username: row.username };
+    },
+    {
+      auth: true,
+      body: t.Object({
+        name: t.Optional(t.String({ maxLength: 60 })),
+        username: t.Optional(t.String({ maxLength: 30 })),
+        bio: t.Optional(t.Union([t.String({ maxLength: 280 }), t.Null()])),
+        emailNotifications: t.Optional(t.Boolean()),
+      }),
+    },
+  )
+
+  /* ── Learning, accountability, workshops (server/api/space-routes.ts) ── */
+  .use(spaceRoutes)
 
   /* ── Global House ───────────────────────────────────────────── */
   .group("/admin", (g) =>
@@ -131,6 +180,26 @@ export const app = new Elysia({ prefix: "/api" })
         },
         { auth: true, params: t.Object({ id: t.String({ format: "uuid" }) }), body: t.Object({ role: GlobalRoleT }) },
       )
+      .patch(
+        "/users/:id/active",
+        async ({ user, params, body }) => {
+          await setUserActive(user, params.id, body.active);
+          return { ok: true };
+        },
+        { auth: true, params: t.Object({ id: t.String({ format: "uuid" }) }), body: t.Object({ active: t.Boolean() }) },
+      )
+      .patch(
+        "/community-requests/:id",
+        async ({ user, params, body }) => {
+          await setCommunityRequestStatus(user, params.id, body.status);
+          return { ok: true };
+        },
+        {
+          auth: true,
+          params: t.Object({ id: t.String({ format: "uuid" }) }),
+          body: t.Object({ status: t.Union([t.Literal("NEW"), t.Literal("CONTACTED"), t.Literal("PROVISIONED"), t.Literal("DECLINED")]) }),
+        },
+      )
       .get(
         "/activity",
         async ({ user, query }) => {
@@ -150,9 +219,16 @@ export const app = new Elysia({ prefix: "/api" })
   )
 
   /* ── Invites ────────────────────────────────────────────────── */
-  .post("/invites/:token/redeem", ({ user, params }) => redeemInvite(user, params.token), {
+  // Handlers that can fail must be `async`: Elysia reads the source to pick its wrapper, and a
+  // plain arrow returning a rejected promise skips onError (the client got an empty 500).
+  .post("/invites/:token/redeem", async ({ user, params }) => await redeemInvite(user, params.token), {
     auth: true,
     params: t.Object({ token: t.String({ minLength: 16, maxLength: 64 }) }),
+  })
+  // Accept an invite sent to the signed-in user's own email, from /c (no link needed).
+  .post("/me/invites/:id/accept", async ({ user, params }) => await redeemMyInvite(user, params.id), {
+    auth: true,
+    params: t.Object({ id: t.String({ format: "uuid", error: "Invalid invite." }) }),
   })
 
   /* ── Community scope: /api/c/:community/… ───────────────────── */
@@ -188,11 +264,39 @@ export const app = new Elysia({ prefix: "/api" })
         "/invites/:inviteId",
         async ({ user, params }) => {
           const access = await getCommunityAccess(user, params.community);
-          if (!communityRules.invitableRoles(access.role).length) throw fail.forbidden();
-          await revokeInvite(user, { communityId: access.community.id }, params.inviteId);
+          const roles: string[] = communityRules.invitableRoles(access.role);
+          if (!roles.length) throw fail.forbidden();
+          await revokeInvite(user, { communityId: access.community.id }, params.inviteId, (r) => roles.includes(r));
           return { ok: true };
         },
         { auth: true, params: t.Object({ community: Slug, inviteId: t.String({ format: "uuid" }) }) },
+      )
+      .post(
+        "/invites/:inviteId/resend",
+        async ({ user, params }) => {
+          const access = await getCommunityAccess(user, params.community);
+          const roles: string[] = communityRules.invitableRoles(access.role);
+          return await resendInvite(user, { communityId: access.community.id }, params.inviteId, (r) => roles.includes(r));
+        },
+        { auth: true, params: t.Object({ community: Slug, inviteId: t.String({ format: "uuid" }) }) },
+      )
+      .delete(
+        "/members/:userId",
+        async ({ user, params }) => {
+          const access = await getCommunityAccess(user, params.community);
+          await removeCommunityMember(access, params.userId);
+          return { ok: true };
+        },
+        { auth: true, params: t.Object({ community: Slug, userId: t.String({ format: "uuid" }) }) },
+      )
+      .post(
+        "/members/:userId/hand-over",
+        async ({ user, params }) => {
+          const access = await getCommunityAccess(user, params.community);
+          await handOverLead(access, params.userId);
+          return { ok: true };
+        },
+        { auth: true, params: t.Object({ community: Slug, userId: t.String({ format: "uuid" }) }) },
       )
       .patch(
         "/members/:userId",
@@ -235,8 +339,23 @@ export const app = new Elysia({ prefix: "/api" })
         "/:space/invites/:inviteId",
         async ({ user, params }) => {
           const access = await requireSpaceRole(user, params.community, params.space, spaceRules.canViewTeam);
-          await revokeInvite(user, { communityId: access.community.id, spaceId: access.space.id }, params.inviteId);
+          const roles: string[] = spaceRules.invitableRoles(access.spaceRole);
+          await revokeInvite(user, { communityId: access.community.id, spaceId: access.space.id }, params.inviteId, (r) => roles.includes(r));
           return { ok: true };
+        },
+        { auth: true, params: t.Object({ community: Slug, space: Slug, inviteId: t.String({ format: "uuid" }) }) },
+      )
+      .post(
+        "/:space/invites/:inviteId/resend",
+        async ({ user, params }) => {
+          const access = await requireSpaceRole(user, params.community, params.space);
+          const roles: string[] = spaceRules.invitableRoles(access.spaceRole);
+          return await resendInvite(
+            user,
+            { communityId: access.community.id, spaceId: access.space.id },
+            params.inviteId,
+            (r) => roles.includes(r),
+          );
         },
         { auth: true, params: t.Object({ community: Slug, space: Slug, inviteId: t.String({ format: "uuid" }) }) },
       )

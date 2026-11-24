@@ -14,16 +14,16 @@ export type ActivityItem = {
 };
 
 const TONE: Record<string, string> = {
-  LOGIN: "bg-muted text-muted-foreground",
+  LOGIN: "bg-surface text-muted-foreground",
   PROVISION_COMMUNITY: "bg-ink text-ink-foreground",
   DELETE_COMMUNITY: "bg-destructive/10 text-destructive",
   SUSPEND_COMMUNITY: "bg-destructive/10 text-destructive",
-  SUBMISSION_APPROVED: "bg-moss-soft text-moss",
-  CHECKPOINT_PASSED: "bg-moss-soft text-moss",
-  CHECK_IN: "bg-ember-soft text-accent-foreground",
-  ROLE_CHANGED: "bg-sky-soft text-sky",
-  GLOBAL_ROLE_CHANGED: "bg-sky-soft text-sky",
-  INVITE_REDEEMED: "bg-moss-soft text-moss",
+  SUBMISSION_APPROVED: "bg-mint-soft text-mint-foreground",
+  CHECKPOINT_PASSED: "bg-mint-soft text-mint-foreground",
+  CHECK_IN: "bg-sun-soft text-sun-foreground",
+  ROLE_CHANGED: "bg-secondary text-secondary-foreground",
+  GLOBAL_ROLE_CHANGED: "bg-secondary text-secondary-foreground",
+  INVITE_REDEEMED: "bg-mint-soft text-mint-foreground",
 };
 
 function describe(item: ActivityItem): string {
@@ -40,6 +40,14 @@ function describe(item: ActivityItem): string {
       return `joined as ${role ?? "member"}`;
     case "INVITE_REVOKED":
       return "revoked an invite";
+    case "INVITE_RESENT":
+      return "resent an invite";
+    case "LEAD_HANDED_OVER":
+      return m.steppedDown ? "handed over the Community Lead role" : "appointed a Community Lead";
+    case "USER_DEACTIVATED":
+      return "deactivated an account";
+    case "USER_REACTIVATED":
+      return "reactivated an account";
     case "ROLE_CHANGED":
       return `changed a ${m.scope ?? ""} role ${String(m.from ?? "").toLowerCase()} → ${String(m.to ?? "").toLowerCase()}`;
     case "GLOBAL_ROLE_CHANGED":
@@ -49,7 +57,7 @@ function describe(item: ActivityItem): string {
     case "MEMBER_JOINED":
       return "joined a space";
     case "MEMBER_REMOVED":
-      return m.left ? "left a space" : "removed a member";
+      return m.left ? "left a space" : m.scope === "community" ? "removed someone from the community" : "removed a member";
     case "DELETE_COMMUNITY":
       return `deleted ${m.name ?? "a community"}`;
     default:
@@ -62,7 +70,7 @@ export function ActivityList({ items, compact }: { items: ActivityItem[]; compac
     return <p className="rounded-2xl border border-dashed px-4 py-10 text-center text-sm text-muted-foreground">No activity matches.</p>;
   }
   return (
-    <ol className="divide-y rounded-2xl border bg-card">
+    <ol className="divide-y divide-border rounded-2xl bg-card shadow-card ring-1 ring-foreground/5">
       {items.map((item) => (
         <li key={item.id} className={cn("flex items-start gap-3 px-4", compact ? "py-2.5" : "py-3")}>
           <UserAvatar name={item.actor?.name} email={item.actor?.email} src={item.actor?.avatarUrl} className="mt-0.5 size-7" />
@@ -72,7 +80,7 @@ export function ActivityList({ items, compact }: { items: ActivityItem[]; compac
               <span className="text-muted-foreground">{describe(item)}</span>
             </p>
             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-              <span className={cn("rounded px-1.5 py-0.5 font-mono text-[10px]", TONE[item.actionType] ?? "bg-muted text-muted-foreground")}>
+              <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", TONE[item.actionType] ?? "bg-surface text-muted-foreground")}>
                 {item.actionType}
               </span>
               {item.community ? (

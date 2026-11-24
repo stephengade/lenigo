@@ -11,7 +11,7 @@
  * light-grey panels, generous radii, pill controls, one confident blue for
  * actions, ink for "you are here", and pastel tints that carry meaning.
  *
- *   Type      display = Teachers (headings, big numbers) · sans = Inter (UI, body)
+ *   Type      display = Rubik (headings, big numbers; Black + uppercase on marketing) · sans = Inter (UI, body)
  *   Action    primary (blue)      → buttons, links, focus ring
  *   Selected  ink (near-black)    → active nav pill, selected chips
  *   Surfaces  background < surface (grey panel) < card (white)
@@ -27,7 +27,7 @@
 
 @theme inline {
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-teachers), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-rubik), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-heading: var(--font-display);
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 
@@ -247,6 +247,34 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Tailwind v4 dropped the pointer on buttons; everything clickable gets it back here. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="tab"],
+  [role="menuitem"],
+  [role="menuitemcheckbox"],
+  [role="menuitemradio"],
+  [role="option"],
+  [role="switch"],
+  [role="checkbox"],
+  [role="combobox"],
+  select,
+  summary,
+  label[for],
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="file"],
+  input[type="range"],
+  input[type="submit"],
+  input[type="button"],
+  a[href] {
+    cursor: pointer;
+  }
+  button:disabled,
+  [aria-disabled="true"],
+  [data-disabled] {
+    cursor: not-allowed;
+  }
   h1, h2, h3 {
     font-family: var(--font-display);
     letter-spacing: -0.015em;
@@ -277,4 +305,20 @@
 
 @utility tabular {
   font-variant-numeric: tabular-nums;
+}
+
+/* Landing page: scrolling band of subjects (paused for reduced motion via motion-reduce:animate-none). */
+@keyframes lenigo-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
 }

@@ -2,7 +2,7 @@
 
 A multi-tenant community learning and accountability platform: structured roadmaps, required projects, daily standups, mentor reviews, streaks and leaderboards.
 
-**Stack:** Next.js 16 (App Router, `proxy.ts`) · TypeScript · Tailwind v4 + shadcn/ui (Base UI) · **Elysia** API mounted at `/api` with an Eden typed client · **Drizzle ORM** · **Supabase** (Postgres + Auth: GitHub OAuth and email magic links).
+**Stack:** Next.js 16 (App Router, `proxy.ts`) · TypeScript · Tailwind v4 + shadcn/ui (Base UI) · **Elysia** API mounted at `/api` with an Eden typed client · **Drizzle ORM** · **Supabase** (Postgres + Auth: emailed one-time codes; GitHub OAuth optional).
 
 ## Tenancy model
 
@@ -29,14 +29,17 @@ src/
     api/[[...slugs]]/     → mounts the Elysia app
     admin/                Global House
     c/[community]/        community hub, members & invites
-    c/[community]/[space] space portal (dashboard, team, …)
+    c/[community]/[space] space portal: home, onboarding, roadmap, modules, placement, feed,
+                          leaderboard, workshops; review + learners (mentors); curriculum (leads)
+    u/[username]/         public profile
     invite/[token]/       invite redemption
     auth/                 OAuth callback, magic-link confirm, sign-out
   proxy.ts                Next 16 Proxy (ex-middleware): session refresh + login redirect
   server/
-    api/app.ts            Elysia routes (all mutations)
+    api/app.ts            Elysia routes (all mutations); learning routes in api/space-routes.ts
     auth/                 session sync, tenant access resolvers, page guards
-    services/             tenant-scoped business logic (communities, invites, admin)
+    services/             tenant-scoped business logic (communities, invites, admin, curriculum,
+                          learning, placement, review, social, workshops, profiles)
     db/schema.ts          Drizzle schema for all four phases
     activity.ts           append-only audit log writer
   lib/permissions.ts      RBAC matrix
@@ -52,19 +55,23 @@ drizzle/                  SQL migrations
 3. **Authentication → URL Configuration:**
    - Site URL: `http://localhost:3000` (your prod URL in production)
    - Redirect URLs: add `http://localhost:3000/**` (and `https://your-domain/**`)
-4. **Authentication → Providers → GitHub:** enable it. Create a GitHub OAuth App whose callback is `https://<project-ref>.supabase.co/auth/v1/callback`.
-5. **Authentication → Emails → Magic Link** template: replace the link with
-   ```html
-   <a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email">Sign in to Lenigo</a>
-   ```
-   Do the same for the **Confirm signup** template, using `type=signup`.
-   This makes magic links and invite emails work across devices (`/auth/confirm` verifies the token on the server).
+4. *(Optional, later)* **Authentication → Providers → GitHub:** enable it with a GitHub OAuth App whose callback is `https://<project-ref>.supabase.co/auth/v1/callback`, then set `AUTH_GITHUB_ENABLED=true`. Until then the sign-in page shows email only.
+5. **Sign-in is by emailed code, not link.** Supabase sends a code instead of a link when the template contains `{{ .Token }}`. In **Authentication → Emails**, paste the ready-made templates (branded, email-client safe; subject line is in each file's top comment):
+   - **Magic Link** ← `supabase/templates/magic-link.html` (subject: *Your Lenigo sign-in code*)
+   - **Confirm signup** ← `supabase/templates/confirm-signup.html` (subject: *Welcome to Lenigo: your sign-in code*). First-time sign-ins use this one, so both are needed.
+   Don't put `{{ .ConfirmationURL }}` in them: a code is the only way in. `{{ .RedirectTo }}` is the sign-in page, or the invite page for invite emails.
+   In **Authentication → Providers → Email**, set **Email OTP Expiration** to 600 seconds (10 minutes); the default is an hour. Supabase also limits how often codes can be requested and tried.
 6. **Leaderboard schedule:** Database → Extensions → enable **pg_cron**, then run in the SQL editor (after `pnpm db:migrate`):
    ```sql
    select cron.schedule('lenigo-leaderboard', '0 6,18 * * *', 'select lenigo_snapshot_leaderboards()');
    ```
    Boards refresh at 06:00 and 18:00 UTC (7 AM / 7 PM in Lagos) for everyone. Keep this in sync with `src/lib/leaderboard.ts`.
-7. For anything beyond local testing, set up **custom SMTP** (Authentication → Emails). Supabase's built-in mailer is heavily rate-limited.
+7. *(Optional)* Put a YouTube Data API v3 key in `YOUTUBE_API_KEY` (server-only, never `NEXT_PUBLIC_`). Lesson lengths then come from YouTube instead of the curator's number; the length caps credited watch time.
+8. **Email (ZeptoMail).** Set `ZEPTOMAIL_PASSWORD` (Send Mail token) and `EMAIL_FROM` (a sender on a domain verified in ZeptoMail). Lenigo then sends its own invite emails, built with React Email (`src/emails`). Add `SUPABASE_SECRET_KEY` and the invite button signs the person in and accepts in one press; without it, the invite page asks for a sign-in code.
+   The same setup sends **learning emails** to the person concerned: project reviewed (with the mentor's feedback), promoted, placement result, session cancelled. Never points or scores. Each person can turn them off from their profile (Edit profile → Learning emails); invites and sign-in codes always send.
+   Sign-in codes still come from Supabase, so also point Supabase at ZeptoMail: **Authentication → Emails → SMTP Settings**: host `smtp.zeptomail.com`, port `587`, username `emailapikey`, password = the same token, sender = your `EMAIL_FROM` address. Supabase's built-in mailer is heavily rate-limited.
+
+9. *(Optional)* **Session reminders.** Set `CRON_SECRET` (24+ random characters) and call `GET /cron/workshop-reminders` with `Authorization: Bearer <CRON_SECRET>` every hour. Everyone who RSVP'd to a session starting within 24 hours gets one reminder (never twice). On Vercel, add a cron in `vercel.json` (`{ "crons": [{ "path": "/cron/workshop-reminders", "schedule": "0 * * * *" }] }`); Vercel sends the header for you when `CRON_SECRET` is set. Elsewhere, any scheduler that can send the header works.
 
 > Every table has Row Level Security **enabled with no policies**. The app connects as the database owner over a direct connection (bypassing RLS), so this only stops Supabase's auto-generated REST API from exposing the tables to the publishable key. Don't add RLS policies unless you intend to use the Data API.
 
@@ -91,6 +98,7 @@ Sign in at `/login` with an address in `SUPER_ADMIN_EMAILS`; you become a Super 
 | `pnpm db:studio` | Drizzle Studio |
 | `pnpm db:seed` | Seed demo communities |
 | `pnpm typecheck` / `pnpm lint` | Checks |
+| `pnpm test:scenarios` | End-to-end scenarios against a throwaway in-memory Postgres and a fake mailer (never your database or real email) |
 
 ## Deployment
 
@@ -123,7 +131,11 @@ Errors are JSON `{ error: string }` with a meaningful status (401/403/404/409/41
 
 ## Phase status
 
-- [x] **Phase 1:** schema (all phases), Supabase auth (GitHub + magic link), Global House (overview, provisioning, health, activity stream, users and global roles), community → space hierarchy, role-scoped invites (email and shareable links), team management, RBAC, audit log, append-only ledger triggers. Schema also carries the learning rules (earned levels, checkpoints, capstones, mentor scoring); see handoff.md → Learning rules.
-- [ ] **Phase 2:** curriculum CMS, roadmap, module workspace (server-verified video progress, checkpoint assessments, capstone projects), mentor scoring, level promotions, sequential unlocking.
-- [ ] **Phase 3:** standups, feed with reactions and comments, review queue, streak engine, points ledger, leaderboards.
-- [ ] **Phase 4:** workshops, RSVP with live-review queue, public profiles `/u/[username]`.
+- [x] **Phase 1:** schema (all phases), Supabase auth (email code; GitHub optional), Global House (overview, provisioning, health, activity stream, users and global roles), community → space hierarchy, role-scoped invites (email and shareable links), team management, RBAC, audit log, append-only ledger triggers. Schema also carries the learning rules (earned levels, checkpoints, capstones, mentor scoring); see handoff.md → Learning rules.
+- [x] **Phase 2:** curriculum CMS, roadmap, module workspace (server-verified video progress, checkpoint assessments, capstone projects), mentor scoring, tracks with per-track levels, onboarding questions + optional placement test, level promotions, sequential unlocking.
+- [x] **Phase 3:** standups, feed with reactions and comments, review queue, streak engine, points ledger, leaderboards.
+- [x] **Phase 4:** workshops, RSVP with live-review queue, public profiles `/u/[username]`.
+
+- [x] **Since:** emailed invites (ZeptoMail + React Email, one-click for new people), paged member and user lists, learning emails with an opt-out, session reminders (`/cron/workshop-reminders`), and "Bring your community" (`/bring` → Global House → Requests).
+
+`pnpm test:scenarios` drives the real services as every role (Super Admin, Community Lead, Space Lead, Manager, Mentor, learners) against a throwaway Postgres: 295 checks covering Phase 1–4 rules, people management, emails and the request form. Every signed-in page loads in the browser for a Community Lead / Super Admin; flows that need several real accounts (a learner and a mentor side by side) are covered by the scenarios, not clicked through.

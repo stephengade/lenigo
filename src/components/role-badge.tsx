@@ -3,25 +3,19 @@ import { ROLE_LABEL, type CommunityRole, type GlobalRole, type SpaceRole } from 
 
 const TONE: Record<string, string> = {
   SUPER_ADMIN: "bg-ink text-ink-foreground",
-  ADMIN: "bg-sky-soft text-sky",
-  VIEWER: "bg-secondary text-muted-foreground",
-  USER: "bg-secondary text-muted-foreground",
+  ADMIN: "bg-lilac-soft text-lilac-foreground",
+  VIEWER: "bg-surface text-muted-foreground",
+  USER: "bg-surface text-muted-foreground",
   OWNER: "bg-ink text-ink-foreground",
-  LEAD: "bg-ember text-white",
-  MANAGER: "bg-ember-soft text-accent-foreground",
-  MENTOR: "bg-moss-soft text-moss",
-  MEMBER: "bg-secondary text-secondary-foreground",
+  LEAD: "bg-primary text-primary-foreground",
+  MANAGER: "bg-lilac-soft text-lilac-foreground",
+  MENTOR: "bg-mint-soft text-mint-foreground",
+  MEMBER: "bg-surface text-muted-foreground",
 };
 
 export function RoleBadge({ role, className }: { role: GlobalRole | CommunityRole | SpaceRole; className?: string }) {
   return (
-    <span
-      className={cn(
-        "inline-flex h-5 items-center rounded-full px-2 font-mono text-[10px] font-medium tracking-wide uppercase",
-        TONE[role],
-        className,
-      )}
-    >
+    <span className={cn("inline-flex h-6 shrink-0 items-center rounded-full px-2.5 text-xs font-semibold", TONE[role], className)}>
       {ROLE_LABEL[role]}
     </span>
   );

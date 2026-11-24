@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   CalendarClock,
+  GraduationCap,
   ClipboardCheck,
   Home,
   LibraryBig,
@@ -16,19 +17,20 @@ import {
 import { space, type SpaceRole } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
-type Item = { href: string; label: string; icon: LucideIcon; show: (r: SpaceRole) => boolean; phase?: number };
+type Item = { href: string; label: string; icon: LucideIcon; show: (r: SpaceRole) => boolean };
 
 const ITEMS: Item[] = [
   { href: "", label: "Home", icon: Home, show: () => true },
-  { href: "/roadmap", label: "Roadmap", icon: Map, show: () => true, phase: 2 },
-  { href: "/feed", label: "Feed", icon: MessagesSquare, show: () => true, phase: 3 },
-  { href: "/leaderboard", label: "Leaderboard", icon: Trophy, show: () => true, phase: 3 },
-  { href: "/workshops", label: "Workshops", icon: CalendarClock, show: () => true, phase: 4 },
+  { href: "/roadmap", label: "Roadmap", icon: Map, show: () => true },
+  { href: "/feed", label: "Feed", icon: MessagesSquare, show: () => true },
+  { href: "/leaderboard", label: "Leaderboard", icon: Trophy, show: () => true },
+  { href: "/workshops", label: "Workshops", icon: CalendarClock, show: () => true },
 ];
 
 const STAFF: Item[] = [
-  { href: "/review", label: "Review queue", icon: ClipboardCheck, show: space.canReview, phase: 3 },
-  { href: "/curriculum", label: "Curriculum", icon: LibraryBig, show: space.canEditCurriculum, phase: 2 },
+  { href: "/review", label: "Review queue", icon: ClipboardCheck, show: space.canReview },
+  { href: "/learners", label: "Learners", icon: GraduationCap, show: space.canReview },
+  { href: "/curriculum", label: "Curriculum", icon: LibraryBig, show: space.canEditCurriculum },
   { href: "/team", label: "Team", icon: Users, show: space.canViewTeam },
 ];
 
@@ -45,24 +47,23 @@ export function SpaceNav({ base, role, row }: { base: string; role: SpaceRole; r
         href={href}
         aria-current={active ? "page" : undefined}
         className={cn(
-          "group flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm whitespace-nowrap transition-colors",
-          active ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground" : "text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+          "group flex items-center gap-2.5 rounded-full px-3.5 py-2 text-sm font-medium whitespace-nowrap transition-colors outline-none focus-visible:ring-4 focus-visible:ring-ring/25",
+          active ? "bg-ink text-ink-foreground" : "text-muted-foreground hover:bg-card hover:text-foreground",
         )}
       >
-        <i.icon className={cn("size-4", active ? "text-ember" : "text-muted-foreground group-hover:text-foreground")} />
+        <i.icon className={cn("size-4", active ? "text-ink-foreground" : "text-muted-foreground group-hover:text-foreground")} />
         <span className="flex-1">{i.label}</span>
-        {i.phase && !row ? <span className="font-mono text-[9px] text-muted-foreground/70">soon</span> : null}
       </Link>
     );
   };
 
   return (
-    <nav className={cn("flex gap-0.5", row ? "flex-row" : "flex-col")} aria-label="Space">
+    <nav className={cn("flex gap-1", row ? "flex-row" : "flex-col")} aria-label="Space">
       {ITEMS.filter((i) => i.show(role)).map(link)}
       {row ? staff.map(link) : null}
       {!row && staff.length ? (
         <>
-          <div className="mt-5 mb-1.5 px-2.5 font-mono text-[10px] tracking-wider text-muted-foreground uppercase">Team tools</div>
+          <div className="mt-5 mb-1 px-3.5 text-xs font-semibold text-muted-foreground">Team tools</div>
           {staff.map(link)}
         </>
       ) : null}

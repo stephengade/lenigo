@@ -7,6 +7,57 @@ const schema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().min(1),
   NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
+  /**
+   * Optional, server-only. When set, a YouTube lesson's length is read from the YouTube Data API
+   * instead of trusting the curator's number (the length caps credited watch time).
+   */
+  YOUTUBE_API_KEY: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim() || undefined),
+  /** "true" shows "Continue with GitHub" on the sign-in page. Enable the provider in Supabase first. */
+  AUTH_GITHUB_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim().toLowerCase() === "true"),
+  /**
+   * ZeptoMail send-mail token (the SMTP password). When set together with EMAIL_FROM, Lenigo sends
+   * its own emails (invites); otherwise invites fall back to a Supabase sign-in code email.
+   */
+  ZEPTOMAIL_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim().replace(/^Zoho-enczapikey\s+/i, "") || undefined),
+  ZEPTOMAIL_API_URL: z.string().url().default("https://cpaas.zoho.com/v1.1/email"),
+  /** Sender, e.g. `Lenigo <hello@example.com>`. The domain must be verified in ZeptoMail. */
+  EMAIL_FROM: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim() || undefined),
+  /**
+   * Supabase secret key (sb_secret_…, never NEXT_PUBLIC_). Optional: it lets the button in an invite
+   * email sign the invitee in and accept in one press. Without it they confirm with a code instead.
+   */
+  SUPABASE_SECRET_KEY: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim() || undefined),
+  /**
+   * Optional, server-only. A scheduler calls /cron/workshop-reminders with
+   * `Authorization: Bearer <CRON_SECRET>` (Vercel Cron sends exactly this). Unset → the route is off.
+   */
+  CRON_SECRET: z
+    .string()
+    .optional()
+    .transform((v) => {
+      const s = v?.trim();
+      if (!s) return undefined;
+      if (s.length < 24) {
+        console.warn("[env] CRON_SECRET is shorter than 24 characters, so /cron routes stay off.");
+        return undefined;
+      }
+      return s;
+    }),
   /** Comma-separated emails promoted to SUPER_ADMIN on sign-in. Bootstraps the Global House. */
   SUPER_ADMIN_EMAILS: z
     .string()

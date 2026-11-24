@@ -115,6 +115,11 @@ export const users = pgTable(
     globalRole: globalRole("global_role").notNull().default("USER"),
     createdAt: createdAt(),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    /** Set by a Super Admin: the account can't sign in or use the API until reactivated. History is kept. */
+    deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
+    deactivatedById: uuid("deactivated_by_id"),
+    /** Learning emails (review results, promotions, session reminders). Invites and sign-in codes always send. */
+    emailNotifications: boolean("email_notifications").notNull().default(true),
   },
   (t) => [
     uniqueIndex("users_email_key").on(sql`lower(${t.email})`),
@@ -224,6 +229,10 @@ export const invites = pgTable(
     uses: integer("uses").notNull().default(0),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    /** When the invite email last went out (creation or resend); resends are rate-limited on it. */
+    lastSentAt: timestamp("last_sent_at", { withTimezone: true }),
+    /** sha256 of the one-click sign-in key in the invite email (never shown in the app). */
+    signinKeyHash: text("signin_key_hash"),
     createdById: uuid("created_by_id").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },
@@ -559,6 +568,8 @@ export const submissions = pgTable(
   (t) => [
     index("submissions_space_status_idx").on(t.spaceId, t.status, t.createdAt),
     index("submissions_user_module_idx").on(t.userId, t.moduleId),
+    // At most one submission waiting for review per learner and module (stops double-submits).
+    uniqueIndex("submissions_one_pending_key").on(t.userId, t.moduleId).where(sql`${t.status} = 'PENDING'`),
   ],
 ).enableRLS();
 
@@ -844,6 +855,8 @@ export const feedItems = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     kind: feedKind("kind").notNull(),
     refId: uuid("ref_id"),
+    /** Small display facts that aren't worth a join, e.g. { days: 7 } for a streak milestone. */
+    meta: jsonb("meta").$type<Record<string, string | number>>().notNull().default({}),
     helpNeeded: boolean("help_needed").notNull().default(false),
     createdAt: createdAt(),
   },
@@ -994,9 +1007,44 @@ export const workshopRsvps = pgTable(
     attended: boolean("attended").notNull().default(false),
     attendedAt: timestamp("attended_at", { withTimezone: true }),
     markedById: uuid("marked_by_id").references(() => users.id, { onDelete: "set null" }),
+    /** When the "starts soon" reminder email went out (sent once). */
+    remindedAt: timestamp("reminded_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.workshopId, t.userId] })],
+).enableRLS();
+
+/* ───────────────────────── Community requests ───────────────────── */
+
+export const communityRequestStatus = pgEnum("community_request_status", ["NEW", "CONTACTED", "PROVISIONED", "DECLINED"]);
+
+/**
+ * "Bring your community" form on the landing page. Public, so it's rate-limited by a salted hash
+ * of the sender's IP (the IP itself isn't stored) and by email. Super Admins and Admins follow up
+ * from Global House → Requests.
+ */
+export const communityRequests = pgTable(
+  "community_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    email: text("email").notNull(),
+    communityName: text("community_name").notNull(),
+    size: text("size").notNull(),
+    location: text("location"),
+    about: text("about").notNull(),
+    link: text("link"),
+    ipHash: text("ip_hash"),
+    status: communityRequestStatus("status").notNull().default("NEW"),
+    handledById: uuid("handled_by_id").references(() => users.id, { onDelete: "set null" }),
+    handledAt: timestamp("handled_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("community_requests_created_idx").on(t.createdAt.desc()),
+    index("community_requests_ip_idx").on(t.ipHash, t.createdAt),
+    index("community_requests_email_idx").on(sql`lower(${t.email})`, t.createdAt),
+  ],
 ).enableRLS();
 
 /* ───────────────────────────── Types ───────────────────────────── */

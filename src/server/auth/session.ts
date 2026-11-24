@@ -57,7 +57,7 @@ export async function syncUserFromAuth(authUser: AuthUser, opts: { logLogin?: bo
       .returning();
   }
 
-  if (opts.logLogin) {
+  if (opts.logLogin && !row.deactivatedAt) {
     await logActivity({
       actorUserId: row.id,
       actionType: "LOGIN",
@@ -91,11 +91,13 @@ export const getSessionUser = cache(async (): Promise<User | null> => {
   if (!userId) return null;
 
   const [row] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-  if (row) return row;
+  // A deactivated account is treated as signed out everywhere (pages, API, invites).
+  if (row) return row.deactivatedAt ? null : row;
 
   // Signed in with Supabase but no app row yet (e.g. the callback failed half-way): repair it.
   const { data: authData } = await supabase.auth.getUser();
-  return authData.user ? syncUserFromAuth(authData.user) : null;
+  const repaired = authData.user ? await syncUserFromAuth(authData.user) : null;
+  return repaired?.deactivatedAt ? null : repaired;
 });
 
 export async function requireUser(next?: string) {

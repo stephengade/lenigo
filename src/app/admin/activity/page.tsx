@@ -44,8 +44,8 @@ export default async function AdminActivityPage({ searchParams }: { searchParams
         description="Every critical change across every community: sign-ins, provisioning, invites, role changes, submissions and more."
       />
 
-      <form className="mb-6 grid gap-2 rounded-2xl border bg-card p-3 sm:grid-cols-[1fr_1fr_1.2fr_auto]" action="/admin/activity">
-        <select name="community" defaultValue={filters.community ?? ""} className="h-9 rounded-lg border bg-background px-2 text-sm" aria-label="Community">
+      <form className="mb-6 grid gap-2 rounded-2xl bg-card shadow-card ring-1 ring-foreground/5 p-3 sm:grid-cols-[1fr_1fr_1.2fr_auto]" action="/admin/activity">
+        <select name="community" defaultValue={filters.community ?? ""} className="h-10 rounded-full border border-input bg-card px-4 text-sm shadow-xs" aria-label="Community">
           <option value="">All communities</option>
           {allCommunities.map((c) => (
             <option key={c.slug} value={c.slug}>
@@ -53,7 +53,7 @@ export default async function AdminActivityPage({ searchParams }: { searchParams
             </option>
           ))}
         </select>
-        <select name="action" defaultValue={filters.action ?? ""} className="h-9 rounded-lg border bg-background px-2 font-mono text-xs" aria-label="Action type">
+        <select name="action" defaultValue={filters.action ?? ""} className="h-10 rounded-full border border-input bg-card px-4 text-sm shadow-xs" aria-label="Action type">
           <option value="">All actions</option>
           {ACTION_TYPES.map((a) => (
             <option key={a} value={a}>
@@ -65,7 +65,7 @@ export default async function AdminActivityPage({ searchParams }: { searchParams
           name="user"
           defaultValue={filters.user ?? ""}
           placeholder="Email, name or GitHub handle"
-          className="h-9 rounded-lg border bg-background px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="h-10 rounded-full border border-input bg-card px-4 text-sm shadow-xs outline-none focus-visible:border-primary focus-visible:ring-4 focus-visible:ring-ring/15"
           aria-label="User"
         />
         <div className="flex gap-2">

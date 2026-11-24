@@ -2,23 +2,48 @@ import { format } from "date-fns";
 import { PageHeader } from "@/components/page-header";
 import { UserAvatar } from "@/components/user-avatar";
 import { InvitePanel } from "@/components/community/invite-panel";
-import { MemberRoleSelect, RemoveMemberButton } from "@/components/community/member-actions";
+import {
+  MemberRoleSelect,
+  RemoveMemberButton,
+} from "@/components/community/member-actions";
 import { pageSpaceRole } from "@/server/auth/guards";
-import { listSpaceMembers } from "@/server/services/communities";
+import {
+  MEMBERS_PAGE_SIZE,
+  pageSpaceMembers,
+} from "@/server/services/communities";
+import {
+  MemberFilters,
+  MemberPager,
+} from "@/components/community/member-directory";
 import { listActiveInvites } from "@/server/services/invites";
-import { SPACE_ROLES, space as rules } from "@/lib/permissions";
+import { ROLE_LABEL, SPACE_ROLES, space as rules } from "@/lib/permissions";
 
 export const metadata = { title: "Team" };
 
-export default async function SpaceTeamPage({ params }: { params: Promise<{ community: string; space: string }> }) {
-  const { community: c, space: s } = await params;
+export default async function SpaceTeamPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ community: string; space: string }>;
+  searchParams: Promise<{ q?: string; role?: string; page?: string }>;
+}) {
+  const [{ community: c, space: s }, query] = await Promise.all([
+    params,
+    searchParams,
+  ]);
   const access = await pageSpaceRole(c, s, rules.canViewTeam);
-  const [members, invites] = await Promise.all([
-    listSpaceMembers(access.space.id),
-    listActiveInvites({ communityId: access.community.id, spaceId: access.space.id }),
+  const [list, invites] = await Promise.all([
+    pageSpaceMembers(access.space.id, {
+      q: query.q,
+      role: query.role,
+      page: Number(query.page) || 1,
+    }),
+    listActiveInvites({
+      communityId: access.community.id,
+      spaceId: access.space.id,
+    }),
   ]);
   const scope = { kind: "space" as const, communitySlug: c, spaceSlug: s };
-  const counts = SPACE_ROLES.map((r) => [r, members.filter((m) => m.role === r).length] as const);
 
   return (
     <div>
@@ -31,46 +56,83 @@ export default async function SpaceTeamPage({ params }: { params: Promise<{ comm
         }
       />
 
-      <div className="grid gap-8 xl:grid-cols-[1.4fr_1fr]">
+      <div className="grid grid-cols-1 gap-8 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <section>
-          <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] tracking-wider text-muted-foreground uppercase">
-            {counts.map(([r, n]) => (
-              <span key={r}>
-                {r.toLowerCase()}s · <span className="text-foreground">{n}</span>
-              </span>
-            ))}
-          </div>
-          <ul className="divide-y rounded-2xl border bg-card">
-            {members.length === 0 ? (
+          <MemberFilters
+            roles={SPACE_ROLES.map((r) => ({
+              value: r,
+              label: r === "MEMBER" ? "Learners" : `${ROLE_LABEL[r]}s`,
+            }))}
+            counts={list.counts}
+            all={list.all}
+            active={list.role}
+          />
+          <ul className="divide-y divide-border rounded-2xl bg-card shadow-card ring-1 ring-foreground/5">
+            {list.rows.length === 0 ? (
               <li className="px-4 py-10 text-center text-sm text-muted-foreground">
-                Nobody has joined yet. Community Owners and Admins already have Lead access.
+                {query.q || list.role
+                  ? "Nobody matches. Try another name, or clear the filters."
+                  : "Nobody has joined yet. Community Leads and Admins already have Space Lead access."}
               </li>
             ) : null}
-            {members.map((m) => {
+            {list.rows.map((m) => {
               const self = m.userId === access.user.id;
-              const assignable = self ? [] : SPACE_ROLES.filter((to) => to !== m.role && rules.canChangeRole(access.spaceRole, m.role, to));
+              const assignable = self
+                ? []
+                : SPACE_ROLES.filter(
+                    (to) =>
+                      to !== m.role &&
+                      rules.canChangeRole(access.spaceRole, m.role, to),
+                  );
               return (
-                <li key={m.userId} className="flex items-center gap-3 px-4 py-3">
+                <li
+                  key={m.userId}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-3 sm:px-4"
+                >
                   <UserAvatar name={m.name} email={m.email} src={m.avatarUrl} />
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 basis-40">
                     <div className="truncate text-sm font-medium">
                       {m.name ?? m.email}
-                      {self ? <span className="ml-1.5 text-xs text-muted-foreground">(you)</span> : null}
+                      {self ? (
+                        <span className="ml-1.5 text-xs text-muted-foreground">
+                          (you)
+                        </span>
+                      ) : null}
                     </div>
                     <div className="truncate text-xs text-muted-foreground">
-                      {m.githubUsername ? `@${m.githubUsername} · ` : `${m.email} · `}joined {format(m.joinedAt, "d MMM yyyy")}
+                      {m.githubUsername
+                        ? `@${m.githubUsername} · `
+                        : `${m.email} · `}
+                      joined {format(m.joinedAt, "d MMM yyyy")}
                     </div>
                   </div>
-                  <MemberRoleSelect scope={scope} userId={m.userId} role={m.role} assignable={assignable} />
-                  {!self && rules.canRemove(access.spaceRole, m.role) ? (
-                    <RemoveMemberButton communitySlug={c} spaceSlug={s} userId={m.userId} name={m.name ?? m.email} />
-                  ) : (
-                    <span className="size-7" />
-                  )}
+                  <div className="ml-auto flex items-center gap-1">
+                    <MemberRoleSelect
+                      scope={scope}
+                      userId={m.userId}
+                      role={m.role}
+                      assignable={assignable}
+                    />
+                    {!self && rules.canRemove(access.spaceRole, m.role) ? (
+                      <RemoveMemberButton
+                        communitySlug={c}
+                        spaceSlug={s}
+                        userId={m.userId}
+                        name={m.name ?? m.email}
+                      />
+                    ) : (
+                      <span className="size-7" />
+                    )}
+                  </div>
                 </li>
               );
             })}
           </ul>
+          <MemberPager
+            page={list.page}
+            pageSize={MEMBERS_PAGE_SIZE}
+            total={list.total}
+          />
         </section>
 
         <aside>
@@ -84,6 +146,7 @@ export default async function SpaceTeamPage({ params }: { params: Promise<{ comm
               uses: i.uses,
               maxUses: i.maxUses,
               expiresAt: i.expiresAt.toISOString(),
+              expired: i.expired,
               createdBy: i.createdBy ?? i.createdByEmail,
             }))}
           />
