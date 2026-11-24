@@ -503,7 +503,8 @@ async function redeemWhere(user: User, where: SQL, notFound: string): Promise<{ 
     }
 
     await tx.insert(inviteRedemptions).values({ inviteId: invite.id, userId: user.id });
-    await tx.update(invites).set({ uses: sql`${invites.uses} + 1` }).where(eq(invites.id, invite.id));
+    // Accepting by any route also burns the email's one-click key, so it can't sign anyone in later.
+    await tx.update(invites).set({ uses: sql`${invites.uses} + 1`, signinKeyHash: null }).where(eq(invites.id, invite.id));
     await logActivity(
       {
         actorUserId: user.id,
