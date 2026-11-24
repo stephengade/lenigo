@@ -559,6 +559,8 @@ export const submissions = pgTable(
   (t) => [
     index("submissions_space_status_idx").on(t.spaceId, t.status, t.createdAt),
     index("submissions_user_module_idx").on(t.userId, t.moduleId),
+    // At most one submission waiting for review per learner and module (stops double-submits).
+    uniqueIndex("submissions_one_pending_key").on(t.userId, t.moduleId).where(sql`${t.status} = 'PENDING'`),
   ],
 ).enableRLS();
 
@@ -844,6 +846,8 @@ export const feedItems = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     kind: feedKind("kind").notNull(),
     refId: uuid("ref_id"),
+    /** Small display facts that aren't worth a join, e.g. { days: 7 } for a streak milestone. */
+    meta: jsonb("meta").$type<Record<string, string | number>>().notNull().default({}),
     helpNeeded: boolean("help_needed").notNull().default(false),
     createdAt: createdAt(),
   },

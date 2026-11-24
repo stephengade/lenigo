@@ -105,7 +105,7 @@ export async function activityByDay(days = 14) {
       n: sql<number>`count(*)::int`,
     })
     .from(activityLogs)
-    .where(sql`${activityLogs.createdAt} >= ${since}`)
+    .where(sql`${activityLogs.createdAt} >= ${since.toISOString()}::timestamptz`)
     .groupBy(sql`1`)
     .orderBy(sql`1`);
   const map = new Map(rows.map((r) => [r.day, r.n]));

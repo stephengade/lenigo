@@ -7,6 +7,14 @@ const schema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().min(1),
   NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
+  /**
+   * Optional, server-only. When set, a YouTube lesson's length is read from the YouTube Data API
+   * instead of trusting the curator's number (the length caps credited watch time).
+   */
+  YOUTUBE_API_KEY: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim() || undefined),
   /** Comma-separated emails promoted to SUPER_ADMIN on sign-in. Bootstraps the Global House. */
   SUPER_ADMIN_EMAILS: z
     .string()

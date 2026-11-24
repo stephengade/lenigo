@@ -1,10 +1,10 @@
 # Lenigo — Handoff
 
-_Last updated: 2026-11-23 · Status: **Phase 1 built, not yet run against a real database**_
+_Last updated: 2026-11-24 · Status: **Phases 1–4 built; services tested on a real Postgres engine; signed-in pages not yet seen in a browser**_
 
 ## TL;DR
 
-Phase 1 of the PRD (multi-tenant core, auth, Global House, invites, RBAC, activity log) is implemented and compiles cleanly (`tsc`, `eslint` and `next build` all pass). The signed-in flows **have not been exercised end-to-end**, because no Supabase credentials were available. The next session should start by connecting Supabase, running migrations and walking through the Phase 1 acceptance test below.
+All four phases are implemented: the multi-tenant core (Phase 1), curriculum + learning workspace (2), standups/feed/review/leaderboards (3) and workshops + public profiles (4). `tsc`, `eslint` and `next build` pass. Every Phase 2–4 service, plus the Global House queries, ran against a real Postgres engine (PGlite) with all four migrations: **166 scenario checks passed** (see "How Phases 2–4 were tested"). What has **not** happened yet: signing in through Supabase and clicking through the pages in a browser. The next session should connect Supabase, run `pnpm db:migrate`, and walk through the acceptance tests below.
 
 ## Decisions that differ from the PRD (made with the user)
 
@@ -49,7 +49,16 @@ src/
     services/communities.ts   provisioning, health, hub, spaces, members, role changes
     services/invites.ts       create/list/revoke/preview/redeem (token stored as SHA-256)
     services/admin.ts         activity stream (cursor), users, global roles, sparkline
-    api/app.ts                Elysia routes; all mutations go through here
+    services/curriculum.ts    builder: tracks/levels/options/modules/lessons/checkpoints/placement bank
+    services/learning.ts      loadTrackProgress() (THE lock rules), onboarding, enrolment, options,
+                              promotions, module workspace, watch-time heartbeats, checkpoints, capstones
+    services/placement.ts     placement test: start, quiz (server-graded), task, review
+    services/review.ts        review queue + scoring, learners overview (mentors)
+    services/social.ts        standups + streaks, feed/reactions/comments, leaderboard reads (snapshots only)
+    services/workshops.ts     sessions, RSVP + presenting queue, staff-marked attendance
+    services/profiles.ts      public profile (/u/[username]) + profile edit
+    api/app.ts                Elysia routes (Global House, invites, community, /me)
+    api/space-routes.ts       every /api/c/:community/:space/… learning route (Phases 2–4)
   app/
     api/[[...slugs]]/route.ts mounts Elysia
     auth/callback             OAuth ?code= → session → syncUser → redirect
@@ -57,12 +66,18 @@ src/
     admin/…                   Global House (overview, communities, new, [slug], activity, users)
     c/                        my communities
     c/[community]/            hub + /members
-    c/[community]/[space]/    layout (sidebar, join gate), home, team, phase 2–4 placeholders
+    c/[community]/[space]/    layout (sidebar, join gate), home (streak, points, standup, next module), team,
+                              onboarding, roadmap, modules/[id], placement/[id], feed, leaderboard, workshops,
+                              review, learners (Mentor+), curriculum (+ [trackId], modules/[id]) (Lead/Manager)
+    u/[username]/             public profile (no sign-in; nothing private)
     invite/[token]/           preview + accept
 src/proxy.ts                Next 16 Proxy: Supabase session refresh + signed-out redirect (lib/supabase/proxy.ts)
 drizzle/0000_init.sql         generated schema migration
 drizzle/0001_integrity_rules.sql   triggers: append-only tables, level changes only via promotion,
-                                   no self-review, no self-marked attendance (NOT yet run on a real DB)
+                                   enrolment/branch/placement rules, no self-review, no self-marked attendance
+drizzle/0002_staff_roles.sql       community Owner/Admin count as Lead in the triggers; reviews and attendance
+                                   must come from Mentor+ of that space; attendance can't be unmarked
+drizzle/0003_phase_2_4.sql         feed_items.meta, one PENDING submission per learner+module
 ```
 
 ### Conventions
@@ -113,13 +128,13 @@ drizzle/0001_integrity_rules.sql   triggers: append-only tables, level changes o
 
 ## Known gaps / risks
 
-- **Nothing tested against a live DB.** Expect small SQL issues, e.g. the `array_position(...::space_role[])` ordering and the correlated subqueries in `listCommunityHealth`.
+- **Not run on Supabase yet.** Services and migrations ran on PGlite (Postgres 17); Supabase may differ in small ways (pooler, extensions). The `array_position(...::space_role[])` ordering in Phase 1 wasn't covered by the scenarios.
 - `provisionCommunity` sends the owner email **inside** the transaction. If the transaction rolls back, an unused sign-in email may still have gone out. Moving the send to after commit would be cleaner.
 - Supabase's built-in SMTP is heavily rate-limited (a few emails per hour). Use custom SMTP before inviting a real cohort.
-- No tests yet. A good first target is `lib/permissions.ts` (pure functions) plus integration tests for `redeemInvite`.
+- No test suite in the repo yet. The Phase 2–4 scenario script (see below) is the best starting point, plus unit tests for `lib/permissions.ts` and `redeemInvite`.
 - `listCommunityHealth` uses per-row subqueries, which is fine for tens of communities. Use materialized stats if it grows.
 - `users` has no FK to `auth.users`; rows are synced on sign-in (`syncUserFromAuth`). Deleting a user in Supabase Auth doesn't delete the app row.
-- Profile setup (`/u/[username]`) isn't built yet; `username` is auto-generated on first sign-in.
+- `username` is auto-generated on first sign-in; learners change it from their public profile (`/u/[username]` → Edit profile).
 - The dev server sometimes keeps serving a stale root layout after `layout.tsx` edits. Restart it and delete `.next`.
 
 ## Learning rules (user decisions, 2026-11-23)
@@ -144,15 +159,50 @@ These are product rules, not suggestions. The server and the DB enforce them; th
    - DB checks: VIDEO needs a provider and `duration_seconds > 0`; YouTube/Drive ids must match their formats; every URL must be https. Open: take `duration_seconds` from the curator, or from the YouTube Data API with a server-only `YOUTUBE_API_KEY` (can't be fudged).
 7. **Show what earns points, never the weights.** Learners see `POINT_SOURCES` (`lib/points.ts`: labels only, listed in journey order, not by value). Weights live only in `server/points/rules.ts` (`server-only`). The API must not return per-event deltas to members, only totals/rank. Project points scale with the mentor's score. 8. **Leaderboard updates twice a day, at the same time for everyone:** 06:00 and 18:00 UTC (7 AM / 7 PM Lagos), via `lenigo_snapshot_leaderboards()` on pg_cron (`lib/leaderboard.ts` holds the schedule). Every learner-facing total and rank, including their own stat card, reads the latest `leaderboard_snapshots` row, never the live ledger.
 
-## Next up: Phase 2 (curriculum and learning workspace)
+## Phases 2–4: what was built (2026-11-24)
 
-Schema already exists: `tracks`, `levels`, `track_branches`, `modules`, `resources`, `resource_progress`, `checkpoints`, `quiz_questions`, `quiz_attempts`, `submissions`, `submission_reviews`, `track_enrollments`, `enrollment_branches`, `level_promotions`, `space_intakes`, `placement_questions`, `placement_attempts`. Follow **Learning rules** above.
+Follows **Learning rules** above. Highlights and where each rule lives:
 
-**DB rules are tested.** `drizzle/0000` + `0001` were applied to PGlite (Postgres in WASM) with 37 scenario checks (enrolment, promotion, branch switching, placement, append-only, leaderboard snapshot), all passing. Re-run that kind of test whenever `0001_integrity_rules.sql` changes.
+- **Curriculum builder** (`/curriculum`, Leads and Managers). A new track gets three levels the space renames. Options ("pick one", e.g. React vs Vue) per level; modules are core or option-only. Lessons are pasted links (`parseVideoSource`): YouTube/Drive store only a validated id. Video length comes from the curator, or from the YouTube Data API when the optional server-only `YOUTUBE_API_KEY` is set. **Publishing a module needs a brief and at least one checkpoint, each with questions.** Anything with learner progress can be unpublished but not deleted.
+- **Locks** live in one function, `loadTrackProgress()`: it draws the roadmap AND authorises every progress write (`openModule()`), so the UI and the server can't disagree. Order: each level's core, then the chosen option; a level with options blocks until one is picked; levels above the learner's tier are hidden; placed-out levels never gate and earn nothing.
+- **Watch time:** the client only reports; `recordHeartbeat()` credits `min(position advance, wall-clock since last heartbeat × 2)`, nothing after a gap over 75 s, complete at 90%. Pressing play sends a zero-credit baseline, so "pause, wait, seek, play" earns nothing. Drive = time on the visible page. External links aren't tracked and don't gate.
+- **Checkpoints:** graded on the server; a miss says which questions were wrong but never the answers; explanations only after a pass; two misses in a row → 10-minute cooldown. Keys never leave the server for learners (mentor previews see them).
+- **Capstones:** submit once videos + checkpoints are done; one pending at a time (partial unique index). Review = approve with a 0–100 score or request changes; feedback required; project points = base × score / 100; the feed post links the work, never the score.
+- **Onboarding** picks the first track (never the level). **Second tracks** are added by a Mentor or Lead from `/learners`. **Promotions** (Mentor/Lead, one step, reason required) from `/learners` or, after a RECOMMENDED placement, from `/review`.
+- **Placement:** crypto-random draw of up to 15 questions, 20-minute timer enforced on the server (+30 s grace), below 70% ends the attempt (status EXPIRED keeps the score), then the build task, then a Mentor+ recommends; a Mentor/Lead promotes.
+- **Standups and streaks:** one per learner per space per *community-local* day (`lib/dates.ts`). The streak continues from yesterday, else restarts. Bonus + feed post at 3, 7, 14, 30, 60, 100 days.
+- **Leaderboard** and every learner-facing total read `leaderboard_snapshots` only. Until pg_cron runs `lenigo_snapshot_leaderboards()` the board says "first board at …" (README → Setup step 6).
+- **Workshops:** Mentor+ schedule. The call link is shown only to people who RSVP'd (and staff). Standup reviews have a presenting queue (learners attach one of their own projects). Attendance is marked by staff after the start, earns points once, and can't be unmarked (DB).
+- **Public profile** `/u/[username]`: name, bio, GitHub, levels per track, approved projects. No email, points, scores or community names; `noindex`. Edit from the profile page (username rules + reserved names).
+- **DB errors:** trigger refusals (`P0001`) come back as HTTP 409 with the trigger's message (`api/app.ts → dbError`).
 
-1. `services/curriculum.ts`: CRUD + reorder + publish, gated by `space.canEditCurriculum`.
-2. `/c/[c]/[s]/curriculum`: builder UI (tracks → levels → modules → resources and quiz).
-3. `/c/[c]/[s]/roadmap`: track/level selector, module cards (locked/active/done). Content above the learner's level is hidden; the next module unlocks only when the previous one meets all three `MODULE_REQUIREMENTS`. `space.bypassesLocks` (Mentor+) skips the locks.
-4. `/c/[c]/[s]/modules/[id]`: YouTube IFrame API with server-credited heartbeats (no client-side "complete"), checkpoints between lessons (threshold per checkpoint, 10-minute cooldown after 2 fails), capstone submission. Hide answer keys unless `canSeeAnswerKeys`.
-5. Award points through a single `awardPoints()` helper using `dedupe_key`; skip placed-out content. Seed GDG OAU Web Development: Frontend (core HTML/CSS/JS → Frameworks core + React/Vue branches → Production), Backend, QA, Fullstack (needs Frontend Intermediate).
-6. Onboarding + placement: intake form on first visit to a space, enrolment in the chosen track, placement quiz/task/review flow, and a mentor queue for "approve another track", "switch branch" and "promote".
+### Phase 1 bugs found and fixed while testing
+
+- **Correlated subqueries:** in a single-table select Drizzle renders `${table.id}` as a bare `"id"`, which inside a subquery binds to the *inner* table. The Global House health table (spaces, weekly/daily active, shipped, pending, streak, owner) always showed 0. Fixed with explicit `"communities"."id"`. **Don't interpolate outer columns in correlated subqueries; write the qualified name.**
+- **The health query crashed:** the owner subquery used `cm.joined_at`, but the column is `created_at` (the `joinedAt` field uses the `createdAt()` helper).
+- **Raw `Date` params:** dates inside raw `sql` templates are now passed as `toISOString()::timestamptz` (activity chart, health counts).
+
+### How Phases 2–4 were tested
+
+A scenario script drove the real services as a Lead, a community Owner (no space membership), a Manager, a Mentor and two learners. It ran against PGlite (Postgres 17 in WASM) with `0000`–`0003` applied, over a single postgres-js connection, so any query that escapes its transaction would hang. 166 checks passed, covering every refusal (wrong role, other space, skipping, self-promotion, self-review, cooldowns, prerequisites, append-only). The script lived in the session scratchpad and **isn't in the repo yet**. Note for re-running: PGlite is one session, so serve it with `fetch_types: false` (postgres-js v4 loads types on a second connection, which clobbers PGlite's shared unnamed statement).
+
+## Acceptance tests for Phases 2–4 (in the browser, not yet run)
+
+- [ ] Lead builds Frontend: renames levels, adds a YouTube lesson, a checkpoint with questions and a brief → publishes module, level, track. Publishing without the brief/checkpoint is refused.
+- [ ] A learner joins the space → home says "Pick your track" → onboarding → roadmap shows module 1 open, module 2 locked, Intermediate hidden.
+- [ ] Watch a video in the player: the bar moves only while playing; dragging to the end doesn't complete it.
+- [ ] Checkpoint: wrong answers twice → 10-minute wait. Pass → explanations. Then submit the project.
+- [ ] Mentor: `/review` → request changes → learner resubmits → approve with a score → feed post, roadmap moves on.
+- [ ] `/learners`: Manager sees no Promote button; Mentor promotes; learner picks an option; Mentor adds a second track (prerequisite enforced).
+- [ ] Placement: track with a task + ≥5 bank questions → learner takes it → mentor recommends → promote from `/review` → beginner modules show "Placed out".
+- [ ] Standup on home → feed, streak 1; second post same day refused. React/comment; Manager deletes a comment.
+- [ ] Run `select lenigo_snapshot_leaderboards();` → `/leaderboard` and home show points and rank.
+- [ ] Workshops: Mentor schedules a standup review; learner RSVPs to present a project; link appears; after start, Mentor marks attendance.
+- [ ] `/u/<username>` signed out: shows levels and approved projects, no email.
+
+## Still open
+
+- **"Bring your community" contact** on the landing page (email, form or other). Ask the user.
+- **Seed curriculum:** GDG OAU Web Development tracks (Frontend, Backend, QA, Fullstack) aren't seeded. The user said they'll curate Frontend themselves.
+- **Email notifications** (review done, promoted, session tomorrow) aren't built.
+- The scenario test script isn't in the repo (see above).

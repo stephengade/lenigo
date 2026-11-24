@@ -1,0 +1,2 @@
+ALTER TABLE "feed_items" ADD COLUMN "meta" jsonb DEFAULT '{}'::jsonb NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "submissions_one_pending_key" ON "submissions" USING btree ("user_id","module_id") WHERE "submissions"."status" = 'PENDING';

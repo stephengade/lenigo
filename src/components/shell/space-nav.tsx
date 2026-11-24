@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   CalendarClock,
+  GraduationCap,
   ClipboardCheck,
   Home,
   LibraryBig,
@@ -16,19 +17,20 @@ import {
 import { space, type SpaceRole } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
-type Item = { href: string; label: string; icon: LucideIcon; show: (r: SpaceRole) => boolean; phase?: number };
+type Item = { href: string; label: string; icon: LucideIcon; show: (r: SpaceRole) => boolean };
 
 const ITEMS: Item[] = [
   { href: "", label: "Home", icon: Home, show: () => true },
-  { href: "/roadmap", label: "Roadmap", icon: Map, show: () => true, phase: 2 },
-  { href: "/feed", label: "Feed", icon: MessagesSquare, show: () => true, phase: 3 },
-  { href: "/leaderboard", label: "Leaderboard", icon: Trophy, show: () => true, phase: 3 },
-  { href: "/workshops", label: "Workshops", icon: CalendarClock, show: () => true, phase: 4 },
+  { href: "/roadmap", label: "Roadmap", icon: Map, show: () => true },
+  { href: "/feed", label: "Feed", icon: MessagesSquare, show: () => true },
+  { href: "/leaderboard", label: "Leaderboard", icon: Trophy, show: () => true },
+  { href: "/workshops", label: "Workshops", icon: CalendarClock, show: () => true },
 ];
 
 const STAFF: Item[] = [
-  { href: "/review", label: "Review queue", icon: ClipboardCheck, show: space.canReview, phase: 3 },
-  { href: "/curriculum", label: "Curriculum", icon: LibraryBig, show: space.canEditCurriculum, phase: 2 },
+  { href: "/review", label: "Review queue", icon: ClipboardCheck, show: space.canReview },
+  { href: "/learners", label: "Learners", icon: GraduationCap, show: space.canReview },
+  { href: "/curriculum", label: "Curriculum", icon: LibraryBig, show: space.canEditCurriculum },
   { href: "/team", label: "Team", icon: Users, show: space.canViewTeam },
 ];
 
@@ -51,7 +53,6 @@ export function SpaceNav({ base, role, row }: { base: string; role: SpaceRole; r
       >
         <i.icon className={cn("size-4", active ? "text-ink-foreground" : "text-muted-foreground group-hover:text-foreground")} />
         <span className="flex-1">{i.label}</span>
-        {i.phase && !row ? <span className={cn("rounded-full px-1.5 text-[10px]", active ? "bg-ink-foreground/15" : "bg-surface text-muted-foreground")}>soon</span> : null}
       </Link>
     );
   };

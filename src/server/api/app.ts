@@ -1,7 +1,9 @@
 import "server-only";
 import { Elysia, t } from "elysia";
-import { getSessionUser } from "@/server/auth/session";
 import { AppError, fail, getCommunityAccess, getSpaceAccess, requireSpaceRole } from "@/server/auth/access";
+import { authMacro } from "@/server/api/auth-macro";
+import { spaceRoutes } from "@/server/api/space-routes";
+import { updateProfile } from "@/server/services/profiles";
 import { ACTION_TYPES } from "@/server/activity";
 import {
   changeCommunityRole,
@@ -26,6 +28,10 @@ const json = (status: number, body: unknown) =>
  */
 function toErrorResponse(code: string | number, error: unknown): Response {
   if (error instanceof AppError) return json(error.status, { error: error.message });
+  // A DB integrity trigger refused the write (0001/0002 migrations). Its message is written for people.
+  const pg = dbError(error);
+  if (pg?.code === "P0001") return json(409, { error: pg.message.charAt(0).toUpperCase() + pg.message.slice(1) + "." });
+  if (pg?.code === "23505") return json(409, { error: "That already exists." });
   if (code === "VALIDATION") {
     const all = (error as { all?: Array<{ path?: string; schema?: { error?: string } }> }).all ?? [];
     const first = all[0];
@@ -37,6 +43,14 @@ function toErrorResponse(code: string | number, error: unknown): Response {
   if (code === "PARSE") return json(400, { error: "Malformed request body." });
   console.error("[api]", error);
   return json(500, { error: "Something went wrong on our side." });
+}
+
+/** postgres-js errors arrive directly or wrapped by Drizzle (`cause`). */
+function dbError(error: unknown): { code: string; message: string } | null {
+  for (let e = error as { code?: unknown; message?: unknown; cause?: unknown } | undefined, i = 0; e && i < 3; e = e.cause as typeof e, i++) {
+    if (typeof e.code === "string" && typeof e.message === "string" && /^[0-9A-Z]{5}$/.test(e.code)) return { code: e.code, message: e.message };
+  }
+  return null;
 }
 
 const Slug = t.String({ pattern: "^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$", error: "Use lowercase letters, numbers and hyphens." });
@@ -62,18 +76,28 @@ export const app = new Elysia({ prefix: "/api" })
   // Errors are returned as raw Responses so they don't leak into Eden's success types.
   // Clients read them as `error.value.error` (see apiError in lib/api.ts).
   .onError(({ code, error }) => toErrorResponse(code, error) as never)
-  .macro({
-    auth: {
-      async resolve() {
-        const user = await getSessionUser();
-        if (!user) throw fail.unauthorized();
-        return { user };
-      },
-    },
-  })
+  .use(authMacro)
 
   .get("/health", () => ({ ok: true, at: new Date().toISOString() }))
   .get("/me", ({ user }) => ({ id: user.id, email: user.email, name: user.name, globalRole: user.globalRole }), { auth: true })
+  .patch(
+    "/me",
+    async ({ user, body }) => {
+      const row = await updateProfile(user, body);
+      return { username: row.username };
+    },
+    {
+      auth: true,
+      body: t.Object({
+        name: t.Optional(t.String({ maxLength: 60 })),
+        username: t.Optional(t.String({ maxLength: 30 })),
+        bio: t.Optional(t.Union([t.String({ maxLength: 280 }), t.Null()])),
+      }),
+    },
+  )
+
+  /* ── Learning, accountability, workshops (server/api/space-routes.ts) ── */
+  .use(spaceRoutes)
 
   /* ── Global House ───────────────────────────────────────────── */
   .group("/admin", (g) =>

@@ -35,6 +35,7 @@ export const fail = {
   notFound: (m = "Not found") => new AppError(404, m),
   conflict: (m: string) => new AppError(409, m),
   gone: (m: string) => new AppError(410, m),
+  tooMany: (m: string) => new AppError(429, m),
 };
 
 export type CommunityAccess = {
@@ -53,6 +54,9 @@ export type SpaceAccess = CommunityAccess & {
   /** Effective role: the higher of the space membership and the role inherited from the community. */
   spaceRole: SpaceRole | null;
 };
+
+/** A space the caller has joined (or leads through the community): spaceRole is set. */
+export type MemberAccess = SpaceAccess & { spaceRole: SpaceRole };
 
 const SPACE_RANK: Record<SpaceRole, number> = { LEAD: 4, MANAGER: 3, MENTOR: 2, MEMBER: 1 };
 const higher = (a: SpaceRole | null, b: SpaceRole | null) => (!a ? b : !b ? a : SPACE_RANK[a] >= SPACE_RANK[b] ? a : b);
@@ -117,5 +121,5 @@ export async function requireSpaceRole(
   const access = await getSpaceAccess(user, communitySlug, spaceSlug);
   if (!access.spaceRole) throw fail.forbidden("Join this space first");
   if (!check(access.spaceRole)) throw fail.forbidden();
-  return access as SpaceAccess & { spaceRole: SpaceRole };
+  return access as MemberAccess;
 }

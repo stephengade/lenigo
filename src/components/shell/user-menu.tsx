@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { Building2, LayoutGrid, LogOut, Moon, Sun } from "lucide-react";
+import { Building2, LayoutGrid, LogOut, Moon, Sun, UserRound } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,6 +22,7 @@ export type MenuUser = {
   email: string;
   avatarUrl: string | null;
   githubUsername: string | null;
+  username?: string | null;
   globalRole: GlobalRole;
 };
 
@@ -49,6 +50,11 @@ export function UserMenu({ user, showHouse }: { user: MenuUser; showHouse: boole
         <DropdownMenuItem render={<Link href="/c" />}>
           <LayoutGrid /> My communities
         </DropdownMenuItem>
+        {user.username ? (
+          <DropdownMenuItem render={<Link href={`/u/${user.username}`} />}>
+            <UserRound /> Your profile
+          </DropdownMenuItem>
+        ) : null}
         {showHouse ? (
           <DropdownMenuItem render={<Link href="/admin" />}>
             <Building2 /> Global House

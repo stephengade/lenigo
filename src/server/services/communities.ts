@@ -163,14 +163,14 @@ export async function listCommunityHealth() {
       name: communities.name,
       status: communities.status,
       createdAt: communities.createdAt,
-      members: sql<number>`(select count(*)::int from ${communityMembers} cm where cm.community_id = ${communities.id})`,
-      spaces: sql<number>`(select count(*)::int from ${spaces} s where s.community_id = ${communities.id} and s.archived_at is null)`,
-      wau: sql<number>`(select count(distinct pl.user_id)::int from ${pointsLedger} pl where pl.community_id = ${communities.id} and pl.created_at >= ${since})`,
-      dau: sql<number>`(select count(distinct pl.user_id)::int from ${pointsLedger} pl where pl.community_id = ${communities.id} and pl.created_at >= ${dayAgo})`,
-      shipped: sql<number>`(select count(*)::int from ${submissions} sb where sb.community_id = ${communities.id} and sb.status = 'APPROVED')`,
-      pendingReviews: sql<number>`(select count(*)::int from ${submissions} sb where sb.community_id = ${communities.id} and sb.status = 'PENDING')`,
-      avgStreak: sql<number>`(select coalesce(round(avg(st.current)::numeric, 1), 0)::float from ${streaks} st join ${spaces} s2 on s2.id = st.space_id where s2.community_id = ${communities.id})`,
-      owner: sql<string | null>`(select coalesce(u.name, u.email) from ${communityMembers} cm join ${users} u on u.id = cm.user_id where cm.community_id = ${communities.id} and cm.role = 'OWNER' order by cm.joined_at limit 1)`,
+      members: sql<number>`(select count(*)::int from ${communityMembers} cm where cm.community_id = "communities"."id")`,
+      spaces: sql<number>`(select count(*)::int from ${spaces} s where s.community_id = "communities"."id" and s.archived_at is null)`,
+      wau: sql<number>`(select count(distinct pl.user_id)::int from ${pointsLedger} pl where pl.community_id = "communities"."id" and pl.created_at >= ${since.toISOString()}::timestamptz)`,
+      dau: sql<number>`(select count(distinct pl.user_id)::int from ${pointsLedger} pl where pl.community_id = "communities"."id" and pl.created_at >= ${dayAgo.toISOString()}::timestamptz)`,
+      shipped: sql<number>`(select count(*)::int from ${submissions} sb where sb.community_id = "communities"."id" and sb.status = 'APPROVED')`,
+      pendingReviews: sql<number>`(select count(*)::int from ${submissions} sb where sb.community_id = "communities"."id" and sb.status = 'PENDING')`,
+      avgStreak: sql<number>`(select coalesce(round(avg(st.current)::numeric, 1), 0)::float from ${streaks} st join ${spaces} s2 on s2.id = st.space_id where s2.community_id = "communities"."id")`,
+      owner: sql<string | null>`(select coalesce(u.name, u.email) from ${communityMembers} cm join ${users} u on u.id = cm.user_id where cm.community_id = "communities"."id" and cm.role = 'OWNER' order by cm.created_at limit 1)`,
     })
     .from(communities)
     .orderBy(desc(communities.createdAt));
@@ -220,8 +220,8 @@ export async function getCommunityHub(access: CommunityAccess) {
   const rows = await db
     .select({
       space: spaces,
-      members: sql<number>`(select count(*)::int from ${spaceMembers} sm where sm.space_id = ${spaces.id})`,
-      mentors: sql<number>`(select count(*)::int from ${spaceMembers} sm where sm.space_id = ${spaces.id} and sm.role in ('LEAD','MANAGER','MENTOR'))`,
+      members: sql<number>`(select count(*)::int from ${spaceMembers} sm where sm.space_id = "spaces"."id")`,
+      mentors: sql<number>`(select count(*)::int from ${spaceMembers} sm where sm.space_id = "spaces"."id" and sm.role in ('LEAD','MANAGER','MENTOR'))`,
       myRole: spaceMembers.role,
     })
     .from(spaces)
@@ -389,7 +389,7 @@ export async function listCommunityMembers(communityId: string) {
       githubUsername: users.githubUsername,
       role: communityMembers.role,
       joinedAt: communityMembers.joinedAt,
-      spaces: sql<number>`(select count(*)::int from ${spaceMembers} sm where sm.community_id = ${communityId} and sm.user_id = ${users.id})`,
+      spaces: sql<number>`(select count(*)::int from ${spaceMembers} sm where sm.community_id = ${communityId} and sm.user_id = "users"."id")`,
     })
     .from(communityMembers)
     .innerJoin(users, eq(users.id, communityMembers.userId))

@@ -29,14 +29,17 @@ src/
     api/[[...slugs]]/     → mounts the Elysia app
     admin/                Global House
     c/[community]/        community hub, members & invites
-    c/[community]/[space] space portal (dashboard, team, …)
+    c/[community]/[space] space portal: home, onboarding, roadmap, modules, placement, feed,
+                          leaderboard, workshops; review + learners (mentors); curriculum (leads)
+    u/[username]/         public profile
     invite/[token]/       invite redemption
     auth/                 OAuth callback, magic-link confirm, sign-out
   proxy.ts                Next 16 Proxy (ex-middleware): session refresh + login redirect
   server/
-    api/app.ts            Elysia routes (all mutations)
+    api/app.ts            Elysia routes (all mutations); learning routes in api/space-routes.ts
     auth/                 session sync, tenant access resolvers, page guards
-    services/             tenant-scoped business logic (communities, invites, admin)
+    services/             tenant-scoped business logic (communities, invites, admin, curriculum,
+                          learning, placement, review, social, workshops, profiles)
     db/schema.ts          Drizzle schema for all four phases
     activity.ts           append-only audit log writer
   lib/permissions.ts      RBAC matrix
@@ -64,7 +67,8 @@ drizzle/                  SQL migrations
    select cron.schedule('lenigo-leaderboard', '0 6,18 * * *', 'select lenigo_snapshot_leaderboards()');
    ```
    Boards refresh at 06:00 and 18:00 UTC (7 AM / 7 PM in Lagos) for everyone. Keep this in sync with `src/lib/leaderboard.ts`.
-7. For anything beyond local testing, set up **custom SMTP** (Authentication → Emails). Supabase's built-in mailer is heavily rate-limited.
+7. *(Optional)* Put a YouTube Data API v3 key in `YOUTUBE_API_KEY` (server-only, never `NEXT_PUBLIC_`). Lesson lengths then come from YouTube instead of the curator's number; the length caps credited watch time.
+8. For anything beyond local testing, set up **custom SMTP** (Authentication → Emails). Supabase's built-in mailer is heavily rate-limited.
 
 > Every table has Row Level Security **enabled with no policies**. The app connects as the database owner over a direct connection (bypassing RLS), so this only stops Supabase's auto-generated REST API from exposing the tables to the publishable key. Don't add RLS policies unless you intend to use the Data API.
 
@@ -124,6 +128,8 @@ Errors are JSON `{ error: string }` with a meaningful status (401/403/404/409/41
 ## Phase status
 
 - [x] **Phase 1:** schema (all phases), Supabase auth (GitHub + magic link), Global House (overview, provisioning, health, activity stream, users and global roles), community → space hierarchy, role-scoped invites (email and shareable links), team management, RBAC, audit log, append-only ledger triggers. Schema also carries the learning rules (earned levels, checkpoints, capstones, mentor scoring); see handoff.md → Learning rules.
-- [ ] **Phase 2:** curriculum CMS, roadmap, module workspace (server-verified video progress, checkpoint assessments, capstone projects), mentor scoring, tracks with per-track levels, onboarding questions + optional placement test, level promotions, sequential unlocking.
-- [ ] **Phase 3:** standups, feed with reactions and comments, review queue, streak engine, points ledger, leaderboards.
-- [ ] **Phase 4:** workshops, RSVP with live-review queue, public profiles `/u/[username]`.
+- [x] **Phase 2:** curriculum CMS, roadmap, module workspace (server-verified video progress, checkpoint assessments, capstone projects), mentor scoring, tracks with per-track levels, onboarding questions + optional placement test, level promotions, sequential unlocking.
+- [x] **Phase 3:** standups, feed with reactions and comments, review queue, streak engine, points ledger, leaderboards.
+- [x] **Phase 4:** workshops, RSVP with live-review queue, public profiles `/u/[username]`.
+
+Phases 2–4 are tested at the service level against Postgres (see handoff.md → "How Phases 2–4 were tested"); the signed-in pages still need a pass in the browser once Supabase is connected.

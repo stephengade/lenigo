@@ -26,7 +26,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <AdminNav />
         <div className="m-3 mt-auto hidden items-center gap-3 rounded-2xl bg-ink-foreground/8 p-3 md:flex">
           <UserMenu
-            user={{ name: user.name, email: user.email, avatarUrl: user.avatarUrl, githubUsername: user.githubUsername, globalRole: user.globalRole }}
+            user={{ name: user.name, email: user.email, avatarUrl: user.avatarUrl, githubUsername: user.githubUsername, username: user.username, globalRole: user.globalRole }}
             showHouse
           />
           <div className="min-w-0 flex-1">

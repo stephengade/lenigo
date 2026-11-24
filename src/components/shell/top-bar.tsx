@@ -25,6 +25,7 @@ export function TopBar({ user, children, className }: { user: User; children?: R
               email: user.email,
               avatarUrl: user.avatarUrl,
               githubUsername: user.githubUsername,
+              username: user.username,
               globalRole: user.globalRole,
             }}
             showHouse={global.canEnterHouse(user.globalRole)}
