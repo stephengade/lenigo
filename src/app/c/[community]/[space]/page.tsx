@@ -6,7 +6,7 @@ import { Progress } from "@/components/form-field";
 import { UserAvatar } from "@/components/user-avatar";
 import { RoleBadge } from "@/components/role-badge";
 import { StandupForm } from "@/components/social/social";
-import { pageSpace } from "@/server/auth/guards";
+import { pageSpace, titleNames } from "@/server/auth/guards";
 import { spaceTeamSummary } from "@/server/services/communities";
 import { listTracks } from "@/server/services/curriculum";
 import { getRoadmap } from "@/server/services/learning";
@@ -17,7 +17,12 @@ import { POINT_SOURCES } from "@/lib/points";
 import { nextLeaderboardUpdate } from "@/lib/leaderboard";
 import { cn } from "@/lib/utils";
 
-export const metadata = { title: "Home" };
+// The space layout's title template only covers child pages, so this page names the space itself.
+export async function generateMetadata({ params }: { params: Promise<{ community: string; space: string }> }) {
+  const { community, space } = await params;
+  const n = await titleNames(community, space);
+  return { title: n ? `${n.space} · ${n.community}` : "Home" };
+}
 
 export default async function SpaceHomePage({ params }: { params: Promise<{ community: string; space: string }> }) {
   const { community: c, space: s } = await params;

@@ -10,7 +10,7 @@ import {
   CommunityMemberMenu,
   MemberRoleSelect,
 } from "@/components/community/member-actions";
-import { pageCommunity } from "@/server/auth/guards";
+import { pageCommunity, titleNames } from "@/server/auth/guards";
 import {
   MEMBERS_PAGE_SIZE,
   pageCommunityMembers,
@@ -26,7 +26,10 @@ import {
   community as rules,
 } from "@/lib/permissions";
 
-export const metadata = { title: "Members" };
+export async function generateMetadata({ params }: { params: Promise<{ community: string }> }) {
+  const n = await titleNames((await params).community);
+  return { title: n ? `Members · ${n.community}` : "Members" };
+}
 
 export default async function CommunityMembersPage({
   params,

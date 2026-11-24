@@ -9,12 +9,13 @@ import { RoleBadge } from "@/components/role-badge";
 import { ButtonLink } from "@/components/button-link";
 import { CreateSpaceDialog } from "@/components/community/create-space-dialog";
 import { JoinSpaceButton } from "@/components/community/join-space-button";
-import { pageCommunity } from "@/server/auth/guards";
+import { pageCommunity, titleNames } from "@/server/auth/guards";
 import { getCommunityHub, getCommunityStats } from "@/server/services/communities";
 import { community as rules } from "@/lib/permissions";
 
 export async function generateMetadata({ params }: { params: Promise<{ community: string }> }) {
-  return { title: (await params).community };
+  const n = await titleNames((await params).community);
+  return { title: n?.community ?? "Community" };
 }
 
 export default async function CommunityHubPage({ params }: { params: Promise<{ community: string }> }) {

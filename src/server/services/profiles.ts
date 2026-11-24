@@ -30,7 +30,7 @@ export async function getPublicProfile(username: string) {
       .where(and(eq(trackEnrollments.userId, user.id), eq(tracks.isPublished, true))),
     approvedProjects(user.id),
   ]);
-  return { user, levels: levelRows, projects: projects.map(({ id, module, track, repoUrl, liveUrl, reviewedAt }) => ({ id, module, track, repoUrl, liveUrl, reviewedAt })) };
+  return { user, levels: levelRows, projects: projects.map(({ id, module, summary, track, repoUrl, liveUrl, reviewedAt }) => ({ id, module, summary, track, repoUrl, liveUrl, reviewedAt })) };
 }
 
 export async function updateProfile(
