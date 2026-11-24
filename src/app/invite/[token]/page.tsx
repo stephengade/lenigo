@@ -4,7 +4,7 @@ import { Logo } from "@/components/brand/logo";
 import { ButtonLink } from "@/components/button-link";
 import { RoleBadge } from "@/components/role-badge";
 import { getSessionUser } from "@/server/auth/session";
-import { oneClickInvites, previewInvite } from "@/server/services/invites";
+import { oneClickAvailable, previewInvite } from "@/server/services/invites";
 import { canSendEmail } from "@/server/email/send";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
@@ -15,11 +15,12 @@ import { ROLE_BLURB } from "@/lib/role-copy";
 export const metadata = { title: "You're invited", referrer: "same-origin" as const };
 
 const ERRORS: Record<string, string> = {
-  link_used: "That button has already been used or replaced by a newer invite email. Sign in with a code below instead.",
-  use_code: "For this account, confirm with a sign-in code below.",
+  link_used: "That button has expired, was already used, or was replaced by a newer invite email. Confirm with a sign-in code below instead.",
+  use_code: "You already have a Lenigo account, so confirm it's you with a sign-in code below.",
   deactivated: "This account has been deactivated. Contact your community lead or the Lenigo team.",
   sign_in_failed: "We couldn't sign you in with the button. Use a sign-in code below instead.",
   one_click_off: "Sign in with a code below to accept.",
+  use_code_or_expired: "To keep your account safe, confirm it's you: we'll email a sign-in code to this address.",
 };
 
 export default async function InvitePage({
@@ -30,7 +31,13 @@ export default async function InvitePage({
   searchParams: Promise<{ k?: string; error?: string }>;
 }) {
   const [{ token }, { k, error }] = await Promise.all([params, searchParams]);
-  const [invite, user] = await Promise.all([previewInvite(token), getSessionUser()]);
+  const [invite, user, oneClick] = await Promise.all([
+    previewInvite(token),
+    getSessionUser(),
+    k && !error ? oneClickAvailable(token) : false,
+  ]);
+  // Came from the email's button but one-click doesn't apply (existing account, or past 72 hours).
+  const notice = error ?? (k && !oneClick ? "use_code_or_expired" : undefined);
   const next = `/invite/${token}`;
 
   return (
@@ -66,7 +73,7 @@ export default async function InvitePage({
 
               {user ? (
                 <AcceptInvite token={token} signedInAs={user.email} lockedTo={invite.email} />
-              ) : invite.email && k && !error && oneClickInvites() ? (
+              ) : invite.email && k && oneClick ? (
                 // One press from the invite email: signs in as the invited address and accepts (see ./accept/route.ts).
                 <form method="post" action={`/invite/${token}/accept`} className="space-y-3">
                   <input type="hidden" name="k" value={k} />
@@ -79,9 +86,16 @@ export default async function InvitePage({
                 </form>
               ) : (
                 <div className="-mt-3">
-                  {error ? (
-                    <p role="alert" className="mt-3 rounded-2xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                      {ERRORS[error] ?? "Sign in with a code below to accept."}
+                  {notice ? (
+                    <p
+                      role={error ? "alert" : undefined}
+                      className={
+                        error
+                          ? "mt-3 rounded-2xl bg-destructive/10 px-4 py-3 text-sm text-destructive"
+                          : "mt-3 rounded-2xl bg-surface px-4 py-3 text-sm text-muted-foreground"
+                      }
+                    >
+                      {ERRORS[notice] ?? "Sign in with a code below to accept."}
                     </p>
                   ) : null}
                   {/* Sign in right here and the invite is accepted in the same step. Supabase's invite

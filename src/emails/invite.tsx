@@ -32,8 +32,8 @@ export default function InviteEmail({ place, role, inviter, url, expires, oneCli
         </Button>
         <Text style={{ ...styles.small, marginTop: 12, textAlign: "center" }}>
           {oneClick
-            ? "One press signs you in and adds you. No password or code needed."
-            : "Opens Lenigo, where we'll email you a sign-in code to confirm it's you."}
+            ? "One press creates your account and adds you. This button works for 3 days; after that we'll email you a sign-in code instead."
+            : "Opens Lenigo. If you're signed in there, accept in one press; if not, we'll email you a sign-in code to confirm it's you."}
         </Text>
       </Section>
 

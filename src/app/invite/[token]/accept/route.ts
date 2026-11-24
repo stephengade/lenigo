@@ -1,12 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, gt, isNotNull } from "drizzle-orm";
 import { db } from "@/server/db";
 import { communities, invites, users } from "@/server/db/schema";
 import { env } from "@/server/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSessionUser, syncUserFromAuth } from "@/server/auth/session";
-import { hashToken, redeemInvite } from "@/server/services/invites";
+import { hashToken, ONE_CLICK_TTL_MS, redeemInvite } from "@/server/services/invites";
 
 /**
  * One-click accept from an invite email: POST /invite/<token>/accept with the email's key `k`.
@@ -17,7 +17,8 @@ import { hashToken, redeemInvite } from "@/server/services/invites";
  *  - email invites only. The key is stored hashed, checked and burned in one statement (two
  *    presses can't both pass), and rotated whenever the invite is resent;
  *  - the inviter never sees the key (their copy of the link has none), so they can't sign in as you;
- *  - never for Super Admins or deactivated accounts: they sign in with a code as usual.
+ *  - only for people new to Lenigo, and only within 72 hours of the email being sent. Existing
+ *    accounts, Super Admins and deactivated accounts sign in with a code as usual.
  * Any failure goes back to the invite page, which offers the code sign-in instead.
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ token: string }> }) {
@@ -42,7 +43,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const [inv] = await db
     .update(invites)
     .set({ signinKeyHash: null })
-    .where(and(eq(invites.tokenHash, hashToken(token)), eq(invites.signinKeyHash, hashToken(key)), isNotNull(invites.email)))
+    .where(
+      and(
+        eq(invites.tokenHash, hashToken(token)),
+        eq(invites.signinKeyHash, hashToken(key)),
+        isNotNull(invites.email),
+        gt(invites.lastSentAt, new Date(Date.now() - ONE_CLICK_TTL_MS)), // the button works for 72 hours
+      ),
+    )
     .returning({ email: invites.email, expiresAt: invites.expiresAt, revokedAt: invites.revokedAt, uses: invites.uses, maxUses: invites.maxUses, communityId: invites.communityId });
   if (!inv?.email) return page("link_used");
   if (inv.revokedAt || inv.expiresAt < new Date() || (inv.maxUses !== null && inv.uses >= inv.maxUses)) return page();
@@ -56,7 +64,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     .where(eq(users.email, email))
     .limit(1);
   if (existing?.deactivatedAt) return page("deactivated");
-  if (existing?.role === "SUPER_ADMIN" || env.SUPER_ADMIN_EMAILS.includes(email)) return page("use_code");
+  // Existing accounts (anyone who has signed in before) and Super Admins always confirm with a code.
+  if (existing || env.SUPER_ADMIN_EMAILS.includes(email)) return page("use_code");
 
   // Mint a one-time Supabase token for this address and redeem it here, which sets our session cookies.
   const admin = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SECRET_KEY, {

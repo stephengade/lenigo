@@ -153,11 +153,38 @@ type InviteMail = {
 /** One-click invite emails need both our mailer and the Supabase secret key (to start the session). */
 export const oneClickInvites = () => canSendEmail() && Boolean(env.SUPABASE_SECRET_KEY);
 
+/** How long an invite email's one-click button works after it was sent. The invite itself lives longer. */
+export const ONE_CLICK_TTL_MS = 72 * 3_600_000;
+
+/**
+ * One-click is only for people new to Lenigo: there's no account to take over yet. Anyone who has
+ * signed in before (they have a users row) confirms with a sign-in code, so a forwarded or leaked
+ * invite email can't open an account that already holds roles and history.
+ */
+export async function hasLenigoAccount(email: string) {
+  const [row] = await db.select({ id: users.id }).from(users).where(eq(users.email, email.toLowerCase())).limit(1);
+  return Boolean(row);
+}
+
+/** Whether this invite's email button may sign someone in right now (the accept route re-checks all of it). */
+export async function oneClickAvailable(token: string) {
+  if (!oneClickInvites()) return false;
+  const [inv] = await db
+    .select({ email: invites.email, keyHash: invites.signinKeyHash, lastSentAt: invites.lastSentAt })
+    .from(invites)
+    .where(eq(invites.tokenHash, hashToken(token)))
+    .limit(1);
+  if (!inv?.email || !inv.keyHash || !inv.lastSentAt) return false;
+  if (Date.now() - inv.lastSentAt.getTime() > ONE_CLICK_TTL_MS) return false;
+  return !(await hasLenigoAccount(inv.email));
+}
+
 /**
  * Sends the invite email.
- * - With ZeptoMail set up: Lenigo's own branded email with one "Accept invite" button. If one-click
- *   is on, the button carries a sign-in key (hashed on the invite row, rotated on every send) that
- *   only this email ever contains: the inviter sees the plain link, which still needs a sign-in.
+ * - With ZeptoMail set up: Lenigo's own branded email with one "Accept invite" button. For someone
+ *   new to Lenigo (and one-click on), the button carries a sign-in key (hashed on the invite row,
+ *   rotated on every send, good for 72 hours) that only this email ever contains: the inviter sees
+ *   the plain link, which still needs a sign-in. Existing accounts always confirm with a code.
  * - Without it: Supabase's sign-in code email, whose button opens /invite/<token>, where the
  *   invitee enters that code.
  */
@@ -168,7 +195,7 @@ export async function sendInviteEmail(
   if (!canSendEmail()) return sendSupabaseCode(m.email, m.token);
 
   let url = inviteUrl(m.token);
-  const oneClick = oneClickInvites();
+  const oneClick = oneClickInvites() && !(await hasLenigoAccount(m.email));
   if (oneClick) {
     const key = newToken();
     await tx.update(invites).set({ signinKeyHash: hashToken(key) }).where(eq(invites.id, m.inviteId));
