@@ -68,7 +68,10 @@ drizzle/                  SQL migrations
    Boards refresh at 06:00 and 18:00 UTC (7 AM / 7 PM in Lagos) for everyone. Keep this in sync with `src/lib/leaderboard.ts`.
 7. *(Optional)* Put a YouTube Data API v3 key in `YOUTUBE_API_KEY` (server-only, never `NEXT_PUBLIC_`). Lesson lengths then come from YouTube instead of the curator's number; the length caps credited watch time.
 8. **Email (ZeptoMail).** Set `ZEPTOMAIL_PASSWORD` (Send Mail token) and `EMAIL_FROM` (a sender on a domain verified in ZeptoMail). Lenigo then sends its own invite emails, built with React Email (`src/emails`). Add `SUPABASE_SECRET_KEY` and the invite button signs the person in and accepts in one press; without it, the invite page asks for a sign-in code.
+   The same setup sends **learning emails** to the person concerned: project reviewed (with the mentor's feedback), promoted, placement result, session cancelled. Never points or scores. Each person can turn them off from their profile (Edit profile → Learning emails); invites and sign-in codes always send.
    Sign-in codes still come from Supabase, so also point Supabase at ZeptoMail: **Authentication → Emails → SMTP Settings**: host `smtp.zeptomail.com`, port `587`, username `emailapikey`, password = the same token, sender = your `EMAIL_FROM` address. Supabase's built-in mailer is heavily rate-limited.
+
+9. *(Optional)* **Session reminders.** Set `CRON_SECRET` (24+ random characters) and call `GET /cron/workshop-reminders` with `Authorization: Bearer <CRON_SECRET>` every hour. Everyone who RSVP'd to a session starting within 24 hours gets one reminder (never twice). On Vercel, add a cron in `vercel.json` (`{ "crons": [{ "path": "/cron/workshop-reminders", "schedule": "0 * * * *" }] }`); Vercel sends the header for you when `CRON_SECRET` is set. Elsewhere, any scheduler that can send the header works.
 
 > Every table has Row Level Security **enabled with no policies**. The app connects as the database owner over a direct connection (bypassing RLS), so this only stops Supabase's auto-generated REST API from exposing the tables to the publishable key. Don't add RLS policies unless you intend to use the Data API.
 
@@ -95,6 +98,7 @@ Sign in at `/login` with an address in `SUPER_ADMIN_EMAILS`; you become a Super 
 | `pnpm db:studio` | Drizzle Studio |
 | `pnpm db:seed` | Seed demo communities |
 | `pnpm typecheck` / `pnpm lint` | Checks |
+| `pnpm test:scenarios` | End-to-end scenarios against a throwaway in-memory Postgres and a fake mailer (never your database or real email) |
 
 ## Deployment
 

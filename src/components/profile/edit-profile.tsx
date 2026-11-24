@@ -11,13 +11,18 @@ import { Field } from "@/components/form-field";
 import { useApiAction } from "@/components/use-api-action";
 import { api } from "@/lib/api";
 
-export function EditProfileDialog({ profile }: { profile: { name: string | null; username: string; bio: string | null } }) {
+export function EditProfileDialog({
+  profile,
+}: {
+  profile: { name: string | null; username: string; bio: string | null; emailNotifications: boolean };
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const { pending, run } = useApiAction();
   const [name, setName] = useState(profile.name ?? "");
   const [username, setUsername] = useState(profile.username);
   const [bio, setBio] = useState(profile.bio ?? "");
+  const [emails, setEmails] = useState(profile.emailNotifications);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button variant="outline" size="sm" />}>
@@ -28,7 +33,7 @@ export function EditProfileDialog({ profile }: { profile: { name: string | null;
           className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
-            run(() => api.me.patch({ name, username, bio: bio || null }), {
+            run(() => api.me.patch({ name, username, bio: bio || null, emailNotifications: emails }), {
               success: "Profile saved",
               refresh: false,
               onDone: (d) => {
@@ -52,6 +57,21 @@ export function EditProfileDialog({ profile }: { profile: { name: string | null;
           <Field label="Bio" htmlFor="pf-bio">
             <Textarea id="pf-bio" rows={3} maxLength={280} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="What you're learning and building." />
           </Field>
+          <label htmlFor="pf-emails" className="flex cursor-pointer items-start gap-3 rounded-xl bg-surface p-3.5">
+            <input
+              id="pf-emails"
+              type="checkbox"
+              className="mt-0.5 size-4 accent-primary"
+              checked={emails}
+              onChange={(e) => setEmails(e.target.checked)}
+            />
+            <span className="text-sm">
+              <span className="font-medium">Learning emails</span>
+              <span className="block text-muted-foreground">
+                Project reviews, level-ups and session reminders. Only you see this setting; invites and sign-in codes always arrive.
+              </span>
+            </span>
+          </label>
           <DialogFooter>
             <Button type="submit" disabled={pending}>
               {pending ? <Loader2 className="animate-spin" /> : null} Save

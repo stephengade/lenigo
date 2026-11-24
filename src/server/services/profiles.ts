@@ -33,7 +33,10 @@ export async function getPublicProfile(username: string) {
   return { user, levels: levelRows, projects: projects.map(({ id, module, track, repoUrl, liveUrl, reviewedAt }) => ({ id, module, track, repoUrl, liveUrl, reviewedAt })) };
 }
 
-export async function updateProfile(actor: User, input: { name?: string; username?: string; bio?: string | null }) {
+export async function updateProfile(
+  actor: User,
+  input: { name?: string; username?: string; bio?: string | null; emailNotifications?: boolean },
+) {
   const set: Partial<typeof users.$inferInsert> = {};
   if (input.name !== undefined) {
     const name = input.name.trim();
@@ -53,6 +56,7 @@ export async function updateProfile(actor: User, input: { name?: string; usernam
     if (bio && bio.length > 280) throw fail.badRequest("Keep your bio under 280 characters.");
     set.bio = bio;
   }
+  if (input.emailNotifications !== undefined) set.emailNotifications = input.emailNotifications;
   if (!Object.keys(set).length) return actor;
   const [row] = await db.update(users).set(set).where(eq(users.id, actor.id)).returning();
   await logActivity({ actorUserId: actor.id, actionType: "PROFILE_UPDATED", entityType: "user", entityId: actor.id, metadata: { fields: Object.keys(set) } });

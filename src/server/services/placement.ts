@@ -4,6 +4,7 @@ import { db } from "@/server/db";
 import { placementAttempts, placementQuestions, trackEnrollments, tracks, users } from "@/server/db/schema";
 import { fail, type MemberAccess } from "@/server/auth/access";
 import { logActivity } from "@/server/activity";
+import { afterResponse, notifyPlacementReviewed } from "@/server/services/notifications";
 import { PLACEMENT } from "@/lib/placement";
 import { space as spaceRules } from "@/lib/permissions";
 
@@ -155,4 +156,5 @@ export async function reviewPlacement(a: MemberAccess, attemptId: string, input:
     entityId: att.id,
     metadata: { decision: input.decision, learner: att.userId },
   });
+  await afterResponse(() => notifyPlacementReviewed(att.id));
 }

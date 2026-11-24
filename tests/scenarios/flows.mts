@@ -559,6 +559,82 @@ await db.update(S.users).set({ globalRole: "SUPER_ADMIN" }).where(eq(S.users.id,
 await refuses("a Super Admin can't be deactivated", () => Adm.setUserActive(root, P.mgr, false), /Super Admins/);
 await db.update(S.users).set({ globalRole: "USER" }).where(eq(S.users.id, P.mgr));
 
+console.log("\nLearning emails");
+const N = await import("@/server/services/notifications");
+await clearMail();
+await ok("project approved email", () => N.notifyProjectReviewed(sub2.id));
+const approvedMail = await mailsTo("a@example.test");
+check("A gets 'Approved: The web, HTML and CSS'", approvedMail.length === 1 && approvedMail[0].subject === "Approved: The web, HTML and CSS", JSON.stringify(approvedMail.map((m) => m.subject)));
+check("it quotes the mentor's feedback", approvedMail[0]?.textbody.includes("Much better, nicely done."));
+check("no score or points in it", !/\bscore\b|\bpoints?\b|\b80\b/i.test(approvedMail[0]?.textbody ?? "x"), approvedMail[0]?.textbody);
+check("links to the roadmap and the opt-out", approvedMail[0]?.htmlbody.includes("/c/gdg-test/web-dev/roadmap") && approvedMail[0]?.htmlbody.includes("/u/ada-builds"));
+await clearMail();
+await ok("changes-requested email", () => N.notifyProjectReviewed(sub.id));
+const revMail = await mailsTo("a@example.test");
+check("subject says changes requested, links to the module", revMail[0]?.subject === "Changes requested: The web, HTML and CSS" && revMail[0].htmlbody.includes(`/modules/${m1.id}`));
+await clearMail();
+const [promo] = await db.select().from(S.levelPromotions).where(eq(S.levelPromotions.userId, U.a));
+await ok("promotion email", () => N.notifyPromoted(promo.id));
+const promoMail = await mailsTo("a@example.test");
+check("A gets 'You're now Intermediate in Frontend' with the reason", promoMail[0]?.subject === "You're now Intermediate in Frontend" && promoMail[0].textbody.includes("Strong first project"), promoMail[0]?.subject);
+await clearMail();
+await ok("placement email", () => N.notifyPlacementReviewed(att.id));
+check("B hears the placement was recommended", (await mailsTo("b@example.test"))[0]?.textbody.includes("recommended you move up"));
+
+await clearMail();
+await db.update(S.users).set({ emailNotifications: false }).where(eq(S.users.id, U.a));
+await N.notifyProjectReviewed(sub2.id);
+check("opted out: no learning email", (await mailsTo("a@example.test")).length === 0);
+await db.update(S.users).set({ emailNotifications: true }).where(eq(S.users.id, U.a));
+await db.update(S.users).set({ deactivatedAt: new Date() }).where(eq(S.users.id, U.b));
+await N.notifyPlacementReviewed(att.id);
+check("deactivated: no learning email", (await mailsTo("b@example.test")).length === 0);
+await db.update(S.users).set({ deactivatedAt: null }).where(eq(S.users.id, U.b));
+
+console.log("\nLearning emails from the real actions");
+await clearMail();
+const m3 = (await ok("a third module for a fresh review", async () => {
+  const m = await curriculum.createModule(lead, lvI.id, { title: "Testing components" });
+  await curriculum.updateModule(lead, m.id, { projectBriefMd: "Write tests" });
+  const c = await curriculum.addCheckpoint(lead, m.id, { title: "Check" });
+  await curriculum.addQuestion(lead, c.id, { prompt: "Which one?", options: ["a", "b"], correctOptionIndex: 0 });
+  await curriculum.updateModule(lead, m.id, { isPublished: true });
+  return m;
+}))!;
+const [sub3] = await db
+  .insert(S.submissions)
+  .values({ moduleId: m3.id, spaceId: space.id, communityId: community.id, userId: U.b, repoUrl: "https://github.com/b/tests" })
+  .returning();
+await ok("mentor requests changes through the service", () => review.reviewSubmission(mentor, sub3.id, { decision: "NEEDS_REVISION", feedback: "Cover the error states too." }));
+check("the review action emailed B", (await mailsTo("b@example.test")).some((m) => m.subject === "Changes requested: Testing components"));
+
+console.log("\nSession reminders and cancellations");
+await clearMail();
+const soon = (await ok("mentor schedules a session in 2 hours", () =>
+  workshops.createWorkshop(mentor, { title: "Git clinic", kind: "WORKSHOP", type: "PHYSICAL", startsAt: new Date(Date.now() + 2 * 3600e3).toISOString(), venue: "Lab 2" }),
+))!;
+const later = (await ok("and one in 3 days", () =>
+  workshops.createWorkshop(mentor, { title: "Career talk", kind: "WORKSHOP", type: "PHYSICAL", startsAt: new Date(Date.now() + 72 * 3600e3).toISOString(), venue: "Hall" }),
+))!;
+await ok("A and B RSVP to both", async () => {
+  for (const w of [soon, later]) for (const who of [A, B]) await workshops.rsvp(who, w.id, { going: true });
+});
+const n1 = await N.sendWorkshopReminders();
+check("reminders go to both RSVPs of the session starting soon", n1 === 2, String(n1));
+const n2 = await N.sendWorkshopReminders();
+check("running again sends nothing", n2 === 0, String(n2));
+const rem = await mailsTo("a@example.test");
+check("one reminder each, with time and venue", rem.length === 1 && rem[0].subject === "Reminder: Git clinic" && rem[0].textbody.includes("Lab 2") && rem[0].textbody.includes("Africa/Lagos"));
+await clearMail();
+await ok("mentor cancels the later session", () => workshops.cancelWorkshop(mentor, later.id));
+check("everyone who RSVP'd hears it was cancelled", (await mailsTo("a@example.test"))[0]?.subject === "Cancelled: Career talk" && (await mailsTo("b@example.test")).length === 1);
+
+console.log("\nCron route");
+const cronRoute = await import("@/app/cron/workshop-reminders/route");
+const { NextRequest } = await import("next/server");
+const cronRes = await cronRoute.GET(new NextRequest("http://localhost:3000/cron/workshop-reminders"));
+check("off without CRON_SECRET (404)", cronRes.status === 404);
+
 console.log(`\n${pass} passed, ${failCount} failed`);
 if (failures.length) console.log("FAILURES:\n- " + failures.join("\n- "));
 process.exit(failCount ? 1 : 0);

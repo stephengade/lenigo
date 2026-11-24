@@ -26,6 +26,7 @@ import {
 } from "@/server/db/schema";
 import { fail, type MemberAccess } from "@/server/auth/access";
 import { logActivity } from "@/server/activity";
+import { afterResponse, notifyPromoted } from "@/server/services/notifications";
 import { awardPoints } from "@/server/points/rules";
 import { level as levelRules, LEVELS, space as spaceRules } from "@/lib/permissions";
 import { trackingFor } from "@/lib/video";
@@ -405,7 +406,7 @@ export async function promoteLearner(a: MemberAccess, enrollmentId: string, inpu
   const [lvl] = await db.select({ title: levels.title }).from(levels).where(and(eq(levels.trackId, e.trackId), eq(levels.tier, to))).limit(1);
   const [track] = await db.select({ title: tracks.title }).from(tracks).where(eq(tracks.id, e.trackId)).limit(1);
 
-  return db.transaction(async (tx) => {
+  const promoted = await db.transaction(async (tx) => {
     // The promotion row must exist before the tier changes (DB trigger, same transaction).
     const [promo] = await tx
       .insert(levelPromotions)
@@ -442,8 +443,10 @@ export async function promoteLearner(a: MemberAccess, enrollmentId: string, inpu
       },
       tx,
     );
-    return { to };
+    return { to, promotionId: promo.id };
   });
+  await afterResponse(() => notifyPromoted(promoted.promotionId));
+  return { to: promoted.to };
 }
 
 /* ════════════════════════════ The module workspace ════════════════════════════ */

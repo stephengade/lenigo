@@ -42,6 +42,15 @@ const schema = z.object({
     .string()
     .optional()
     .transform((v) => v?.trim() || undefined),
+  /**
+   * Optional, server-only. A scheduler calls /cron/workshop-reminders with
+   * `Authorization: Bearer <CRON_SECRET>` (Vercel Cron sends exactly this). Unset → the route is off.
+   */
+  CRON_SECRET: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim() || undefined)
+    .refine((v) => !v || v.length >= 24, "CRON_SECRET should be at least 24 characters"),
   /** Comma-separated emails promoted to SUPER_ADMIN on sign-in. Bootstraps the Global House. */
   SUPER_ADMIN_EMAILS: z
     .string()

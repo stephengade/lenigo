@@ -4,6 +4,7 @@ import { db } from "@/server/db";
 import { modules, spaceMembers, submissions, users, workshopRsvps, workshops } from "@/server/db/schema";
 import { fail, type MemberAccess } from "@/server/auth/access";
 import { logActivity } from "@/server/activity";
+import { afterResponse, notifyWorkshopCancelled } from "@/server/services/notifications";
 import { awardPoints } from "@/server/points/rules";
 import { space as spaceRules } from "@/lib/permissions";
 
@@ -101,8 +102,10 @@ export async function cancelWorkshop(a: MemberAccess, id: string) {
   const w = await workshopInSpace(a, id);
   if (!(spaceRules.canMarkAttendance(a.spaceRole) && (w.createdById === a.user.id || spaceRules.canModerate(a.spaceRole)))) throw fail.forbidden();
   if (w.startsAt <= new Date()) throw fail.conflict("This session has started; it stays on record.");
+  const going = await db.select({ userId: workshopRsvps.userId }).from(workshopRsvps).where(eq(workshopRsvps.workshopId, w.id));
   await db.delete(workshops).where(eq(workshops.id, w.id));
   await logActivity({ actorUserId: a.user.id, actionType: "WORKSHOP_CANCELLED", communityId: a.community.id, spaceId: a.space.id, entityType: "workshop", entityId: w.id, metadata: { title: w.title } });
+  await afterResponse(() => notifyWorkshopCancelled(w, going.map((g) => g.userId).filter((id) => id !== a.user.id)));
 }
 
 /** RSVP (optionally with a project to present at a live review), or change it. */

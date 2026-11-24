@@ -57,7 +57,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
             </p>
             {user.bio ? <p className="mt-3 max-w-xl text-pretty">{user.bio}</p> : null}
           </div>
-          {isMe && user.username ? <EditProfileDialog profile={{ name: user.name, username: user.username, bio: user.bio }} /> : null}
+          {isMe && user.username ? <EditProfileDialog profile={{ name: user.name, username: user.username, bio: user.bio, emailNotifications: viewer!.emailNotifications }} /> : null}
         </section>
 
         {levels.length ? (

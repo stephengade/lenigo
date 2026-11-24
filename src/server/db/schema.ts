@@ -118,6 +118,8 @@ export const users = pgTable(
     /** Set by a Super Admin: the account can't sign in or use the API until reactivated. History is kept. */
     deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
     deactivatedById: uuid("deactivated_by_id"),
+    /** Learning emails (review results, promotions, session reminders). Invites and sign-in codes always send. */
+    emailNotifications: boolean("email_notifications").notNull().default(true),
   },
   (t) => [
     uniqueIndex("users_email_key").on(sql`lower(${t.email})`),
@@ -1005,6 +1007,8 @@ export const workshopRsvps = pgTable(
     attended: boolean("attended").notNull().default(false),
     attendedAt: timestamp("attended_at", { withTimezone: true }),
     markedById: uuid("marked_by_id").references(() => users.id, { onDelete: "set null" }),
+    /** When the "starts soon" reminder email went out (sent once). */
+    remindedAt: timestamp("reminded_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.workshopId, t.userId] })],

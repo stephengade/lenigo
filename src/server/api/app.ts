@@ -94,6 +94,7 @@ export const app = new Elysia({ prefix: "/api" })
         name: t.Optional(t.String({ maxLength: 60 })),
         username: t.Optional(t.String({ maxLength: 30 })),
         bio: t.Optional(t.Union([t.String({ maxLength: 280 }), t.Null()])),
+        emailNotifications: t.Optional(t.Boolean()),
       }),
     },
   )

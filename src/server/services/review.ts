@@ -20,6 +20,7 @@ import {
 } from "@/server/db/schema";
 import { fail, type MemberAccess } from "@/server/auth/access";
 import { logActivity } from "@/server/activity";
+import { afterResponse, notifyProjectReviewed } from "@/server/services/notifications";
 import { awardPoints } from "@/server/points/rules";
 import { level as levelRules, space as spaceRules } from "@/lib/permissions";
 import { liveStreak, localDate } from "@/lib/dates";
@@ -162,6 +163,7 @@ export async function reviewSubmission(
       tx,
     );
   });
+  await afterResponse(() => notifyProjectReviewed(s.id));
 }
 
 /* ── Learners overview (Mentors and above) ────────────────────────── */
