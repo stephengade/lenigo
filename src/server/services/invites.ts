@@ -8,15 +8,28 @@ import {
   communityMembers,
   inviteRedemptions,
   invites,
+  levelPromotions,
+  levels,
   spaceMembers,
   spaces,
+  trackEnrollments,
+  tracks,
   users,
   type User,
 } from "@/server/db/schema";
 import { env } from "@/server/env";
 import { logActivity } from "@/server/activity";
 import { fail, type CommunityAccess, type SpaceAccess } from "@/server/auth/access";
-import { community as communityRules, space as spaceRules, type CommunityRole, type SpaceRole } from "@/lib/permissions";
+import {
+  community as communityRules,
+  level as levelRules,
+  LEVEL_LABEL,
+  LEVELS,
+  space as spaceRules,
+  type CommunityRole,
+  type LevelTier,
+  type SpaceRole,
+} from "@/lib/permissions";
 import { format } from "date-fns";
 import { canSendEmail, sendEmail } from "@/server/email/send";
 import InviteEmail from "@/emails/invite";
@@ -63,19 +76,66 @@ export async function createCommunityInvite(
 export async function createSpaceInvite(
   access: SpaceAccess,
   role: SpaceRole,
-  input: CreateInviteInput,
+  input: CreateInviteInput & { trackId?: string | null; tier?: LevelTier | null },
 ): Promise<CreatedInvite> {
   if (!spaceRules.invitableRoles(access.spaceRole).includes(role)) {
     throw fail.forbidden(`You can't invite people as ${role.toLowerCase()} of this space.`);
   }
+  const { trackId, tier, ...rest } = input;
+  const placement = trackId ? await checkInvitePlacement(access, role, trackId, tier ?? "BEGINNER") : null;
   return insertInvite(access.user, {
     communityId: access.community.id,
     spaceId: access.space.id,
     communityRole: null,
     spaceRole: role,
-    label: `${access.community.name} · ${access.space.name}`,
-    ...input,
+    trackId: placement?.trackId ?? null,
+    tier: placement?.tier ?? null,
+    label: `${access.community.name} · ${access.space.name}${placement ? ` · ${placement.label}` : ""}`,
+    ...rest,
   });
+}
+
+/** Tracks a learner invite can start someone on (the same rules checkInvitePlacement applies), with their published levels. */
+export async function invitableTracks(spaceId: string) {
+  const rows = await db
+    .select({ id: tracks.id, title: tracks.title, tier: levels.tier, level: levels.title })
+    .from(tracks)
+    .innerJoin(levels, and(eq(levels.trackId, tracks.id), eq(levels.isPublished, true)))
+    .where(and(eq(tracks.spaceId, spaceId), eq(tracks.isPublished, true), isNull(tracks.prerequisiteTrackId)))
+    .orderBy(tracks.position, tracks.createdAt);
+  const out: { id: string; title: string; levels: { tier: LevelTier; title: string }[] }[] = [];
+  for (const r of rows) {
+    let t = out.find((x) => x.id === r.id);
+    if (!t) out.push((t = { id: r.id, title: r.title, levels: [] }));
+    t.levels.push({ tier: r.tier, title: r.level });
+  }
+  for (const t of out) t.levels.sort((a, b) => levelRules.rank(a.tier) - levelRules.rank(b.tier));
+  return out;
+}
+
+/**
+ * A learner invite may name the track (and level) they start at. Starting above BEGINNER is a
+ * promotion, so only someone who may promote can set it (of the roles that can invite, that is a
+ * Lead: Managers never promote). Redeeming re-checks all of it in the database, in the inviter's name.
+ */
+async function checkInvitePlacement(access: SpaceAccess, role: SpaceRole, trackId: string, tier: LevelTier) {
+  if (role !== "MEMBER") throw fail.badRequest("Only learner (Member) invites can start someone on a track.");
+  if (!LEVELS.includes(tier)) throw fail.badRequest("Pick a level.");
+  if (tier !== "BEGINNER" && !spaceRules.canPromoteLevel(access.spaceRole)) {
+    throw fail.forbidden("Only Mentors and Leads can start a learner above the first level.");
+  }
+  const [row] = await db
+    .select({ track: tracks, levelTitle: levels.title, levelPublished: levels.isPublished })
+    .from(tracks)
+    .leftJoin(levels, and(eq(levels.trackId, tracks.id), eq(levels.tier, tier)))
+    .where(and(eq(tracks.id, trackId), eq(tracks.spaceId, access.space.id)))
+    .limit(1);
+  if (!row || !row.track.isPublished) throw fail.notFound("Track not found");
+  if (!row.levelTitle || !row.levelPublished) throw fail.badRequest(`${row.track.title} has no published ${LEVEL_LABEL[tier]} level yet.`);
+  if (row.track.prerequisiteTrackId) {
+    throw fail.badRequest(`${row.track.title} builds on another track. Invite them to that one; a Mentor can add this track later.`);
+  }
+  return { trackId: row.track.id, tier, label: `${row.track.title} (${row.levelTitle})` };
 }
 
 /** Also used by provisioning, where the actor is a Global House admin rather than a member. */
@@ -86,6 +146,8 @@ export async function insertInvite(
     spaceId: string | null;
     communityRole: CommunityRole | null;
     spaceRole: SpaceRole | null;
+    trackId?: string | null;
+    tier?: LevelTier | null;
     label: string;
   } & CreateInviteInput,
   tx: Pick<typeof db, "insert" | "update"> = db,
@@ -102,6 +164,8 @@ export async function insertInvite(
       spaceId: v.spaceId,
       communityRole: v.communityRole,
       spaceRole: v.spaceRole,
+      trackId: v.trackId ?? null,
+      tier: v.trackId ? (v.tier ?? "BEGINNER") : null,
       email,
       maxUses: email ? 1 : (v.maxUses ?? null),
       expiresAt: new Date(Date.now() + days * 86_400_000),
@@ -117,7 +181,13 @@ export async function insertInvite(
       spaceId: v.spaceId,
       entityType: "invite",
       entityId: row.id,
-      metadata: { role: v.spaceRole ?? v.communityRole, scope: v.spaceId ? "space" : "community", email, maxUses: v.maxUses ?? null },
+      metadata: {
+        role: v.spaceRole ?? v.communityRole,
+        scope: v.spaceId ? "space" : "community",
+        email,
+        maxUses: v.maxUses ?? null,
+        ...(v.trackId ? { trackId: v.trackId, tier: v.tier ?? "BEGINNER" } : {}),
+      },
     },
     tx as typeof db,
   );
@@ -250,9 +320,13 @@ export async function listActiveInvites(scope: { communityId: string; spaceId?: 
       createdByEmail: users.email,
       lastSentAt: invites.lastSentAt,
       expired: sql<boolean>`${invites.expiresAt} <= now()`,
+      track: tracks.title,
+      levelTitle: levels.title,
     })
     .from(invites)
     .leftJoin(users, eq(users.id, invites.createdById))
+    .leftJoin(tracks, eq(tracks.id, invites.trackId))
+    .leftJoin(levels, and(eq(levels.trackId, invites.trackId), eq(levels.tier, invites.tier)))
     .where(
       and(
         eq(invites.communityId, scope.communityId),
@@ -357,9 +431,11 @@ export async function resendInvite(
       tx,
     );
     const [names] = await tx
-      .select({ community: communities.name, space: spaces.name })
+      .select({ community: communities.name, space: spaces.name, track: tracks.title, level: levels.title })
       .from(communities)
       .leftJoin(spaces, inv.spaceId ? eq(spaces.id, inv.spaceId) : sql`false`)
+      .leftJoin(tracks, inv.trackId ? eq(tracks.id, inv.trackId) : sql`false`)
+      .leftJoin(levels, inv.trackId && inv.tier ? and(eq(levels.trackId, inv.trackId), eq(levels.tier, inv.tier)) : sql`false`)
       .where(eq(communities.id, scope.communityId))
       .limit(1);
     return {
@@ -367,7 +443,9 @@ export async function resendInvite(
       inviteId: inv.id,
       email: inv.email,
       token,
-      place: names?.space ? `${names.community} · ${names.space}` : (names?.community ?? "Lenigo"),
+      place:
+        (names?.space ? `${names.community} · ${names.space}` : (names?.community ?? "Lenigo")) +
+        (names?.track ? ` · ${names.track} (${names.level ?? LEVEL_LABEL[inv.tier ?? "BEGINNER"]})` : ""),
       role: (inv.spaceRole ?? inv.communityRole)!,
       inviter: actor.name ?? actor.email,
       expiresAt,
@@ -393,15 +471,19 @@ export type InvitePreview =
       scope: "community" | "space";
       email: string | null;
       expiresAt: Date;
+      /** The track and level a learner invite starts them at. */
+      placement: { track: string; level: string } | null;
     }
   | { ok: false; reason: string };
 
 export async function previewInvite(token: string): Promise<InvitePreview> {
   const [row] = await db
-    .select({ invite: invites, community: communities, space: spaces })
+    .select({ invite: invites, community: communities, space: spaces, track: tracks.title, level: levels.title })
     .from(invites)
     .innerJoin(communities, eq(communities.id, invites.communityId))
     .leftJoin(spaces, eq(spaces.id, invites.spaceId))
+    .leftJoin(tracks, eq(tracks.id, invites.trackId))
+    .leftJoin(levels, and(eq(levels.trackId, invites.trackId), eq(levels.tier, invites.tier)))
     .where(eq(invites.tokenHash, hashToken(token)))
     .limit(1);
 
@@ -419,6 +501,7 @@ export async function previewInvite(token: string): Promise<InvitePreview> {
     scope: row.invite.spaceId ? "space" : "community",
     email: row.invite.email,
     expiresAt: row.invite.expiresAt,
+    placement: row.track ? { track: row.track, level: row.level ?? LEVEL_LABEL[row.invite.tier ?? "BEGINNER"] } : null,
   };
 }
 
@@ -541,6 +624,8 @@ async function redeemWhere(user: User, where: SQL, notFound: string): Promise<{ 
       }
     }
 
+    const placement = space && invite.trackId && invite.tier ? await placeFromInvite(tx, invite, user, space.id) : null;
+
     await tx.insert(inviteRedemptions).values({ inviteId: invite.id, userId: user.id });
     // Accepting by any route also burns the email's one-click key, so it can't sign anyone in later.
     await tx.update(invites).set({ uses: sql`${invites.uses} + 1`, signinKeyHash: null }).where(eq(invites.id, invite.id));
@@ -552,13 +637,119 @@ async function redeemWhere(user: User, where: SQL, notFound: string): Promise<{ 
         spaceId: space?.id ?? null,
         entityType: "invite",
         entityId: invite.id,
-        metadata: { role: invite.spaceRole ?? invite.communityRole, scope: space ? "space" : "community" },
+        metadata: { role: invite.spaceRole ?? invite.communityRole, scope: space ? "space" : "community", ...(placement ? { placement } : {}) },
       },
       tx,
     );
 
     return { redirectTo: destination };
   });
+}
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type Placement = { trackId: string; tier: LevelTier; placed: boolean; reason?: string };
+
+/**
+ * Start the learner on the invite's track and level: an enrolment approved by the inviter, then
+ * one promotion per level above BEGINNER, each in the inviter's name and marked via_invite (so the
+ * lower levels count as placed out, as after a placement test). The database re-checks it all as
+ * for a manual enrolment: the inviter must still be a Mentor or Lead to approve or promote, never
+ * for themselves, and the track must be published. If any of that no longer holds, the learner
+ * still joins the space and picks a track at onboarding; the redemption log records why.
+ */
+async function placeFromInvite(tx: Tx, invite: typeof invites.$inferSelect, user: User, spaceId: string): Promise<Placement> {
+  const trackId = invite.trackId!;
+  const target = invite.tier!;
+  const inviterId = invite.createdById;
+  const skip = (reason: string): Placement => ({ trackId, tier: target, placed: false, reason });
+  if (!inviterId) return skip("inviter no longer exists");
+  if (inviterId === user.id) return skip("own invite");
+
+  const [already] = await tx
+    .select({ id: trackEnrollments.id })
+    .from(trackEnrollments)
+    .where(and(eq(trackEnrollments.trackId, trackId), eq(trackEnrollments.userId, user.id)))
+    .limit(1);
+  if (already) return skip("already in this track");
+
+  const [inviter] = await tx
+    .select({ role: spaceMembers.role, name: users.name, email: users.email })
+    .from(spaceMembers)
+    .innerJoin(users, eq(users.id, spaceMembers.userId))
+    .where(and(eq(spaceMembers.spaceId, spaceId), eq(spaceMembers.userId, inviterId)))
+    .limit(1);
+  const canApprove = spaceRules.canApproveExtraTrack(inviter?.role ?? null);
+  if (target !== "BEGINNER" && !spaceRules.canPromoteLevel(inviter?.role ?? null)) return skip("inviter can no longer promote");
+  const [other] = await tx
+    .select({ id: trackEnrollments.id })
+    .from(trackEnrollments)
+    .where(and(eq(trackEnrollments.spaceId, spaceId), eq(trackEnrollments.userId, user.id)))
+    .limit(1);
+  if (other && !canApprove) return skip("another track needs a Mentor or Lead");
+
+  try {
+    // A savepoint: if the database refuses any step, the invite is still accepted, without the placement.
+    await tx.transaction(async (sp) => {
+      const [e] = await sp
+        .insert(trackEnrollments)
+        .values({
+          trackId,
+          spaceId,
+          communityId: invite.communityId,
+          userId: user.id,
+          approvedById: canApprove ? inviterId : null,
+          approvalNote: canApprove ? "Started on this track by invite." : null,
+        })
+        .returning({ id: trackEnrollments.id });
+      await logActivity(
+        {
+          actorUserId: user.id,
+          actionType: "TRACK_ENROLLED",
+          communityId: invite.communityId,
+          spaceId,
+          entityType: "enrollment",
+          entityId: e.id,
+          metadata: { trackId, viaInvite: invite.id, approvedBy: canApprove ? inviterId : null },
+        },
+        sp,
+      );
+      const by = inviter?.name ?? inviter?.email ?? "your inviter";
+      let tier: LevelTier = "BEGINNER";
+      while (levelRules.rank(tier) < levelRules.rank(target)) {
+        const to: LevelTier = levelRules.next(tier)!;
+        // The promotion row must exist before the tier changes (DB trigger, same transaction).
+        await sp.insert(levelPromotions).values({
+          enrollmentId: e.id,
+          trackId,
+          spaceId,
+          communityId: invite.communityId,
+          userId: user.id,
+          fromLevel: tier,
+          toLevel: to,
+          promotedById: inviterId,
+          reason: `Started at ${LEVEL_LABEL[target]} by invite from ${by}.`,
+          viaInvite: true,
+        });
+        await sp.update(trackEnrollments).set({ tier: to }).where(eq(trackEnrollments.id, e.id));
+        await logActivity(
+          {
+            actorUserId: inviterId,
+            actionType: "LEVEL_PROMOTED",
+            communityId: invite.communityId,
+            spaceId,
+            entityType: "enrollment",
+            entityId: e.id,
+            metadata: { learner: user.id, from: tier, to, viaInvite: invite.id },
+          },
+          sp,
+        );
+        tier = to;
+      }
+    });
+    return { trackId, tier: target, placed: true };
+  } catch (err) {
+    return skip(err instanceof Error ? err.message.slice(0, 200) : "refused by the database");
+  }
 }
 
 function maskEmail(email: string) {

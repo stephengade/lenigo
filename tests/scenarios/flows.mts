@@ -126,6 +126,7 @@ const m2 = (await ok("create module 2", () => curriculum.createModule(lead, lvB.
 const v1 = (await ok("add a YouTube video (10 min)", () => curriculum.addResource(lead, m1.id, { type: "VIDEO", title: "HTML crash course", url: "https://youtu.be/dQw4w9WgXcQ", minutes: 10 })))!;
 check("YouTube id stored, URL rebuilt", v1.providerId === "dQw4w9WgXcQ" && v1.url === "https://www.youtube.com/watch?v=dQw4w9WgXcQ");
 await refuses("javascript: links are refused", () => curriculum.addResource(lead, m1.id, { type: "ARTICLE", title: "Bad link", url: "javascript:alert(1)" }), /https/);
+await refuses("an untrackable video link is refused (learners must watch lessons)", () => curriculum.addResource(lead, m1.id, { type: "VIDEO", title: "Vimeo", url: "https://vimeo.com/76979871", minutes: 5 }), /YouTube or Google Drive/);
 await refuses("a video needs a length", () => curriculum.addResource(lead, m1.id, { type: "VIDEO", title: "No length", url: "https://youtu.be/dQw4w9WgXcQ" }), /length/);
 await ok("add an article", () => curriculum.addResource(lead, m1.id, { type: "ARTICLE", title: "MDN HTML", url: "https://developer.mozilla.org/en-US/docs/Web/HTML", minutes: 5 }));
 await refuses("can't publish without a brief", () => curriculum.updateModule(lead, m1.id, { isPublished: true }), /brief/);
@@ -499,6 +500,62 @@ const eB2 = (await db.select().from(S.trackEnrollments).where(eq(S.trackEnrollme
 const pB = await learning.loadTrackProgress({ trackId: fe.id, userId: U.b, enrollment: eB2, preview: false });
 check("B's beginner modules are placed out and don't gate", pB.placedInto === "INTERMEDIATE" && pB.levels[0].modules.every((m) => m.placedOut && !m.locked));
 check("B's next step is the intermediate core", pB.activeModuleId === core.id);
+
+console.log("\nInvites that start a learner on a track");
+{
+  const Inv = await import("@/server/services/invites");
+  const tok = (url: string) => new URL(url).pathname.split("/").pop()!;
+  const person = async (k: string) => (await db.insert(S.users).values({ id: uid(), email: `${k}@example.test`, name: k, username: k }).returning())[0];
+  const enrolmentOf = async (userId: string, trackId: string) =>
+    (await db.select().from(S.trackEnrollments).where(and(eq(S.trackEnrollments.userId, userId), eq(S.trackEnrollments.trackId, trackId))))[0];
+
+  const opts = await Inv.invitableTracks(space.id);
+  check("invite picker lists Frontend with its published levels", opts.some((t) => t.id === fe.id && t.levels.map((l) => l.tier).join() === "BEGINNER,INTERMEDIATE"));
+  check("tracks with a prerequisite aren't offered", !opts.some((t) => t.id === fs.id));
+  await refuses("a Manager can't start someone above the first level", () => Inv.createSpaceInvite(manager, "MEMBER", { email: "x1@example.test", sendEmail: false, trackId: fe.id, tier: "INTERMEDIATE" }), /Only Mentors and Leads/);
+  await refuses("only learner invites carry a track", () => Inv.createSpaceInvite(lead, "MENTOR", { email: "x2@example.test", sendEmail: false, trackId: fe.id, tier: "BEGINNER" }), /Only learner/);
+  await refuses("a track with a prerequisite is refused", () => Inv.createSpaceInvite(lead, "MEMBER", { email: "x3@example.test", sendEmail: false, trackId: fs.id, tier: "BEGINNER" }), /builds on another track/);
+  await refuses("a track from another space is refused", () => Inv.createSpaceInvite(crossSpace, "MEMBER", { email: "x4@example.test", sendEmail: false, trackId: fe.id, tier: "BEGINNER" }), /Track not found/);
+  await refuses("an unpublished level is refused", () => Inv.createSpaceInvite(lead, "MEMBER", { email: "x5@example.test", sendEmail: false, trackId: fe.id, tier: "ADVANCED" }), /no published Advanced/);
+  await refuses(
+    "DB: a track on a non-learner invite is refused",
+    () => db.insert(S.invites).values({ tokenHash: uid(), communityId: community.id, spaceId: space.id, spaceRole: "MENTOR", trackId: fe.id, tier: "BEGINNER", expiresAt: new Date(Date.now() + 86_400_000) }),
+    /invites_track_learners_only|check constraint/,
+  );
+
+  const ada = await person("inv-ada");
+  const adaInv = (await ok("Lead invites Ada to Frontend at Intermediate", () => Inv.createSpaceInvite(lead, "MEMBER", { email: ada.email, sendEmail: false, trackId: fe.id, tier: "INTERMEDIATE" })))!;
+  const adaPv = await Inv.previewInvite(tok(adaInv.url));
+  check("the invite page shows the track and level", adaPv.ok && adaPv.placement?.track === "Frontend" && adaPv.placement.level === lvI.title);
+  const pending = await Inv.listActiveInvites({ communityId: community.id, spaceId: space.id });
+  check("pending invites show the track", pending.some((i) => i.id === adaInv.id && i.track === "Frontend" && i.levelTitle === lvI.title));
+  await ok("Ada accepts", () => Inv.redeemInvite(ada, tok(adaInv.url)));
+  const eAda = await enrolmentOf(ada.id, fe.id);
+  check("Ada is enrolled at Intermediate, approved by the Lead", eAda?.tier === "INTERMEDIATE" && eAda.approvedById === U.lead);
+  const adaPromo = await db.select().from(S.levelPromotions).where(eq(S.levelPromotions.enrollmentId, eAda.id));
+  check("one promotion recorded, by the Lead, marked via invite", adaPromo.length === 1 && adaPromo[0].promotedById === U.lead && adaPromo[0].viaInvite && adaPromo[0].toLevel === "INTERMEDIATE");
+  const pAda = await learning.loadTrackProgress({ trackId: fe.id, userId: ada.id, enrollment: eAda, preview: false });
+  check("Ada's Beginner modules are placed out; she starts on the Intermediate core", pAda.placedInto === "INTERMEDIATE" && pAda.levels[0].modules.every((m) => m.placedOut && !m.locked) && pAda.activeModuleId === core.id);
+  await ok("accepting again changes nothing", () => Inv.redeemInvite(ada, tok(adaInv.url)));
+  check("still one enrolment and one promotion", (await db.select().from(S.levelPromotions).where(eq(S.levelPromotions.enrollmentId, eAda.id))).length === 1);
+
+  const ben = await person("inv-ben");
+  const benLink = (await ok("Manager makes a Frontend (Beginner) link", () => Inv.createSpaceInvite(manager, "MEMBER", { maxUses: 5, trackId: fe.id, tier: "BEGINNER" })))!;
+  await ok("Ben joins with it", () => Inv.redeemInvite(ben, tok(benLink.url)));
+  const eBen = await enrolmentOf(ben.id, fe.id);
+  check("Ben is on Frontend at Beginner, as his own first track (a Manager can't approve)", eBen?.tier === "BEGINNER" && eBen.approvedById === null);
+
+  await ok("A (already on Frontend) uses the link too", () => Inv.redeemInvite(users[U.a], tok(benLink.url)));
+  check("A's existing enrolment is untouched", (await enrolmentOf(U.a, fe.id))?.tier === eA2.tier);
+
+  const selfLink = (await ok("Lead makes an Intermediate link", () => Inv.createSpaceInvite(lead, "MEMBER", { maxUses: 5, trackId: fe.id, tier: "INTERMEDIATE" })))!;
+  await ok("the Lead opens their own link", () => Inv.redeemInvite(users[U.lead], tok(selfLink.url)));
+  check("nobody places themselves: the Lead isn't enrolled", !(await enrolmentOf(U.lead, fe.id)));
+  const reds = await db.select().from(S.activityLogs).where(and(eq(S.activityLogs.actionType, "INVITE_REDEEMED"), eq(S.activityLogs.actorUserId, U.lead)));
+  check("the skip is recorded on the redemption", reds.some((r) => JSON.stringify(r.metadata).includes("own invite")));
+  // Throwaway people: remove them so the member and user counts later on stay as they were.
+  await ok("remove the invited test learners", () => db.delete(S.users).where(sql`${S.users.id} in (${ada.id}, ${ben.id})`));
+}
 
 console.log("\nStandups, streaks, feed");
 const su = await ok("A posts a standup", () => social.postStandup(A, { didToday: "Finished the HTML module today", nextStep: "Start React", blockers: "Stuck on flexbox" }));

@@ -424,7 +424,7 @@ export function AddResourceForm({ c, s, moduleId }: Scope & { moduleId: string }
       <Field
         label="Link"
         htmlFor="r-url"
-        hint={type === "VIDEO" ? "YouTube works best (watch time is tracked). Google Drive and other https links work too." : "An https article, docs page or guide. Optional reading."}
+        hint={type === "VIDEO" ? "YouTube or Google Drive. Learners must watch it before they can move on. Put other links in as articles." : "An https article, docs page or guide. Optional reading."}
         error={err("url")}
       >
         <Input id="r-url" placeholder={type === "VIDEO" ? "https://www.youtube.com/watch?v=…" : "https://developer.mozilla.org/…"} {...form.register("url")} {...invalid("r-url", err("url"))} />

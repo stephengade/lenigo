@@ -233,6 +233,13 @@ export const invites = pgTable(
     lastSentAt: timestamp("last_sent_at", { withTimezone: true }),
     /** sha256 of the one-click sign-in key in the invite email (never shown in the app). */
     signinKeyHash: text("signin_key_hash"),
+    /**
+     * Learner invites only: the track (in the invite's space) and level the learner starts at.
+     * Redeeming enrols them, approved by the inviter, and records one promotion per level above
+     * BEGINNER in the inviter's name, so the usual rules (Mentor/Lead only, never self) still hold.
+     */
+    trackId: uuid("track_id").references(() => tracks.id, { onDelete: "cascade" }),
+    tier: levelTier("tier"),
     createdById: uuid("created_by_id").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },
@@ -240,6 +247,8 @@ export const invites = pgTable(
     uniqueIndex("invites_token_hash_key").on(t.tokenHash),
     index("invites_community_idx").on(t.communityId),
     index("invites_space_idx").on(t.spaceId),
+    check("invites_track_with_tier", sql`(${t.trackId} IS NULL) = (${t.tier} IS NULL)`),
+    check("invites_track_learners_only", sql`${t.trackId} IS NULL OR ${t.spaceRole} = 'MEMBER'`),
   ],
 ).enableRLS();
 
@@ -727,6 +736,8 @@ export const levelPromotions = pgTable(
     promotedById: uuid("promoted_by_id").references(() => users.id, { onDelete: "set null" }),
     reason: text("reason").notNull(),
     placementAttemptId: uuid("placement_attempt_id"),
+    /** Recorded when a learner joined through an invite that started them at this level (a placement, like a test). */
+    viaInvite: boolean("via_invite").notNull().default(false),
     createdAt: createdAt(),
   },
   (t) => [
