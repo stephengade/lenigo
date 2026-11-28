@@ -48,8 +48,9 @@ export default async function ModuleEditorPage({ params }: { params: Promise<{ c
         className="pb-2"
       />
 
+      {/* min-w-0 on the grid items: the brief textarea sizes to its longest line, which would otherwise widen the page. */}
       <div className="grid items-start gap-6 xl:grid-cols-[1fr_18rem]">
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           <Panel>
             <Section title="Details">
               <ModuleDetailsForm c={c} s={s} module={mod} branches={branches} hasProgress={data.hasProgress} />
@@ -60,7 +61,7 @@ export default async function ModuleEditorPage({ params }: { params: Promise<{ c
             <Section title="Lessons" description="Learners watch videos in order. Watch time is credited by the server; skipping ahead doesn't count.">
               <ul className="mb-4 grid gap-2">
                 {resources.map((r, i) => (
-                  <li key={r.id} className="flex items-center gap-2 rounded-xl bg-surface px-2 py-2.5">
+                  <li key={r.id} className="flex min-w-0 items-center gap-2 rounded-xl bg-surface px-2 py-2.5">
                     <MoveButtons c={c} s={s} kind="resource" id={r.id} first={i === 0} last={i === resources.length - 1} />
                     {r.type === "VIDEO" ? <PlayCircle className="size-4 shrink-0 text-primary" /> : <FileText className="size-4 shrink-0 text-muted-foreground" />}
                     <div className="min-w-0 flex-1">
@@ -91,7 +92,7 @@ export default async function ModuleEditorPage({ params }: { params: Promise<{ c
             <Section title="Checkpoints" description="Short assessments between lessons. Learners must pass each one; answers are graded on the server.">
               <div className="mb-4 grid gap-4">
                 {checkpoints.map((cp) => (
-                  <div key={cp.id} className="rounded-2xl border border-border p-4">
+                  <div key={cp.id} className="min-w-0 rounded-2xl border border-border p-4">
                     <div className="mb-3 flex items-start justify-between gap-2">
                       <div>
                         <h3 className="font-display font-bold">{cp.title}</h3>
@@ -101,9 +102,9 @@ export default async function ModuleEditorPage({ params }: { params: Promise<{ c
                       </div>
                       <DeleteButton c={c} s={s} kind="checkpoint" id={cp.id} label={`the "${cp.title}" checkpoint`} />
                     </div>
-                    <ol className="mb-3 grid gap-2">
+                    <ol className="mb-3 grid min-w-0 gap-2">
                       {cp.questions.map((q, i) => (
-                        <li key={q.id} className="rounded-xl bg-surface p-3 text-sm">
+                        <li key={q.id} className="min-w-0 rounded-xl bg-surface p-3 text-sm">
                           <div className="flex items-start gap-2">
                             <span className="font-semibold text-muted-foreground">{i + 1}.</span>
                             <p className="flex-1 font-medium">{q.prompt}</p>
@@ -129,7 +130,7 @@ export default async function ModuleEditorPage({ params }: { params: Promise<{ c
           </Panel>
         </div>
 
-        <aside className="space-y-4 xl:sticky xl:top-24">
+        <aside className="min-w-0 space-y-4 xl:sticky xl:top-24">
           <Panel>
             <Section title="Ready to publish?">
               <ul className="grid gap-2 text-sm">
