@@ -8,7 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { FieldError, invalid } from "@/components/form-field";
-import { emailError, emailSuggestion } from "@/lib/validate";
+import { emailSuggestion } from "@/lib/validate";
+import { signInSchema } from "@/lib/schemas";
+import { useZodForm } from "@/components/use-zod-form";
 
 export function GithubIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
@@ -43,14 +45,13 @@ export function LoginForm({
 }) {
   const router = useRouter();
   const [step, setStep] = useState<Step>(startWithCode ? "code" : "email");
-  const [email, setEmail] = useState(fixedEmail ?? "");
+  const form = useZodForm(signInSchema, { email: fixedEmail ?? "" });
+  const email = form.watch("email");
+  const emailProblem = form.formState.errors.email?.message;
   const [code, setCode] = useState("");
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
-  /** Field errors show once the learner has tried to continue, not while they're still typing. */
-  const [tried, setTried] = useState(false);
-  const emailProblem = fixedEmail ? null : emailError(email);
   const suggestion = fixedEmail ? null : emailSuggestion(email);
 
   async function github() {
@@ -66,11 +67,8 @@ export function LoginForm({
     }
   }
 
-  async function sendCode(e?: React.FormEvent) {
-    e?.preventDefault();
-    setTried(true);
-    // Supabase would send a code to "ada@gmail" without complaint, so the address is checked first.
-    if (emailProblem) return;
+  /** Checks the address (signInSchema), then asks the server for a code. */
+  const sendCode = form.handleSubmit(async ({ email }) => {
     setBusy("sending");
     setError(null);
     // The server checks the address may sign in (an account or an invite) before a code goes out.
@@ -79,7 +77,7 @@ export function LoginForm({
       const res = await fetch("/auth/otp", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), next, invite }),
+        body: JSON.stringify({ email, next, invite }),
       });
       if (!res.ok) message = ((await res.json().catch(() => ({}))) as { error?: string }).error ?? "We couldn't send a code. Try again.";
     } catch {
@@ -93,7 +91,7 @@ export function LoginForm({
     setSent(true);
     setCode("");
     setStep("code");
-  }
+  });
 
   async function verify(e: React.FormEvent) {
     e.preventDefault();
@@ -198,27 +196,25 @@ export function LoginForm({
         </>
       ) : null}
 
-      <form onSubmit={sendCode} className="space-y-3">
+      <form noValidate onSubmit={sendCode} className="space-y-3">
         <div className="space-y-1.5">
           <Label htmlFor="email">Email address</Label>
           <Input
             id="email"
             type="email"
-            required
             autoComplete="email"
             placeholder="ada@example.com"
-            value={email}
             readOnly={Boolean(fixedEmail)}
             className={fixedEmail ? "bg-surface text-muted-foreground" : undefined}
-            onChange={(e) => setEmail(e.target.value)}
-            {...invalid("email", tried ? emailProblem : null)}
+            {...form.register("email")}
+            {...invalid("email", emailProblem)}
           />
           {fixedEmail ? <p className="text-xs text-muted-foreground">This invite was sent to this address.</p> : null}
-          {tried && emailProblem ? (
+          {emailProblem ? (
             <div className="flex flex-wrap items-center gap-x-2">
               <FieldError id="email-error" message={emailProblem} />
               {suggestion ? (
-                <button type="button" className="text-xs font-semibold text-primary underline-offset-2 hover:underline" onClick={() => setEmail(suggestion)}>
+                <button type="button" className="text-xs font-semibold text-primary underline-offset-2 hover:underline" onClick={() => form.setValue("email", suggestion, { shouldValidate: true })}>
                   Use {suggestion}
                 </button>
               ) : null}
@@ -236,13 +232,11 @@ export function LoginForm({
           size="sm"
           className="-ml-2"
           disabled={busy !== null || !email}
-          onClick={() => {
-            setTried(true);
-            if (emailProblem) return;
+          onClick={form.handleSubmit(() => {
             setSent(false);
             setError(null);
             setStep("code");
-          }}
+          })}
         >
           I already have a code
         </Button>

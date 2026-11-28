@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import { Loader2, Send, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Field, invalid, NativeSelect } from "@/components/form-field";
-import { allValid, textError } from "@/lib/validate";
+import { Field, FieldError, invalid, NativeSelect } from "@/components/form-field";
+import { useZodForm } from "@/components/use-zod-form";
+import { commentSchema, standupSchema } from "@/lib/schemas";
 import { spaceApi, useApiAction } from "@/components/use-api-action";
 import { cn } from "@/lib/utils";
 
@@ -14,44 +14,33 @@ type Scope = { c: string; s: string };
 
 export function StandupForm({ c, s, modules }: Scope & { modules: { id: string; title: string }[] }) {
   const { pending, run } = useApiAction();
-  const [didToday, setDid] = useState("");
-  const [nextStep, setNext] = useState("");
-  const [blockers, setBlockers] = useState("");
-  const [moduleId, setModule] = useState(modules[0]?.id ?? "");
-  const [tried, setTried] = useState(false);
-  const errors = {
-    did: textError(didToday, { label: "what you did today", min: 10, max: 1500 }),
-    next: textError(nextStep, { label: "your next step", min: 5, max: 600 }),
-    blockers: textError(blockers, { label: "blockers", max: 600 }),
-  };
-  const err = (k: keyof typeof errors) => (tried ? errors[k] : null);
+  const form = useZodForm(standupSchema, { didToday: "", nextStep: "", blockers: "", moduleId: modules[0]?.id ?? "" });
+  const err = (k: "didToday" | "nextStep" | "blockers") => form.formState.errors[k]?.message;
   return (
     <form
       noValidate
       className="grid gap-3"
-      onSubmit={(e) => {
-        e.preventDefault();
-        setTried(true);
-        if (!allValid(errors)) return;
-        run(() => spaceApi(c, s).standups.post({ didToday, nextStep, blockers: blockers || null, moduleId: moduleId || null }), {
+      onSubmit={form.handleSubmit((v) =>
+        run(() => spaceApi(c, s).standups.post(v), {
           success: (d) => (d.milestone ? `${d.milestone}-day streak! Keep it going.` : `Posted. Streak: ${d.streak} day${d.streak === 1 ? "" : "s"}.`),
-        });
-      }}
+          onDone: () => form.reset({ didToday: "", nextStep: "", blockers: "", moduleId: v.moduleId ?? "" }),
+        }),
+      )}
     >
-      <Field label="What did you build or learn today?" htmlFor="su-did" error={err("did")}>
-        <Textarea id="su-did" rows={3} required minLength={10} maxLength={1500} value={didToday} onChange={(e) => setDid(e.target.value)} {...invalid("su-did", err("did"))} />
+      <Field label="What did you build or learn today?" htmlFor="su-did" error={err("didToday")}>
+        <Textarea id="su-did" rows={3} maxLength={1500} {...form.register("didToday")} {...invalid("su-did", err("didToday"))} />
       </Field>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Next step" htmlFor="su-next" error={err("next")}>
-          <Input id="su-next" required minLength={5} maxLength={600} value={nextStep} onChange={(e) => setNext(e.target.value)} {...invalid("su-next", err("next"))} />
+        <Field label="Next step" htmlFor="su-next" error={err("nextStep")}>
+          <Input id="su-next" maxLength={600} {...form.register("nextStep")} {...invalid("su-next", err("nextStep"))} />
         </Field>
         <Field label="Anything blocking you?" htmlFor="su-block" hint="Mentors watch for these." error={err("blockers")}>
-          <Input id="su-block" maxLength={600} value={blockers} onChange={(e) => setBlockers(e.target.value)} placeholder="Optional" />
+          <Input id="su-block" maxLength={600} placeholder="Optional" {...form.register("blockers")} {...invalid("su-block", err("blockers"))} />
         </Field>
       </div>
       {modules.length ? (
         <Field label="Working on" htmlFor="su-mod" className="max-w-sm">
-          <NativeSelect id="su-mod" value={moduleId} onChange={(e) => setModule(e.target.value)}>
+          <NativeSelect id="su-mod" {...form.register("moduleId")}>
             <option value="">Something else</option>
             {modules.map((m) => (
               <option key={m.id} value={m.id}>
@@ -98,19 +87,22 @@ export function Reactions({ c, s, itemId, reactions }: Scope & { itemId: string;
 
 export function CommentForm({ c, s, itemId }: Scope & { itemId: string }) {
   const { pending, run } = useApiAction();
-  const [body, setBody] = useState("");
+  const form = useZodForm(commentSchema, { body: "" });
+  const error = form.formState.errors.body?.message;
+  const body = form.watch("body");
   return (
     <form
-      className="flex gap-2"
-      onSubmit={(e) => {
-        e.preventDefault();
-        run(() => spaceApi(c, s).feed({ id: itemId }).comments.post({ body }), { onDone: () => setBody("") });
-      }}
+      noValidate
+      className="grid gap-1"
+      onSubmit={form.handleSubmit((v) => run(() => spaceApi(c, s).feed({ id: itemId }).comments.post(v), { onDone: () => form.reset({ body: "" }) }))}
     >
-      <Input aria-label="Write a comment" placeholder="Cheer them on or help out…" value={body} maxLength={1000} onChange={(e) => setBody(e.target.value)} className="h-9" />
-      <Button type="submit" size="sm" variant="outline" disabled={pending || !body.trim()}>
-        {pending ? <Loader2 className="animate-spin" /> : "Reply"}
-      </Button>
+      <div className="flex gap-2">
+        <Input aria-label="Write a comment" placeholder="Cheer them on or help out…" maxLength={1000} className="h-9" {...form.register("body")} {...invalid(`cm-${itemId}`, error)} />
+        <Button type="submit" size="sm" variant="outline" disabled={pending || !body.trim()}>
+          {pending ? <Loader2 className="animate-spin" /> : "Reply"}
+        </Button>
+      </div>
+      <FieldError id={`cm-${itemId}-error`} message={error} />
     </form>
   );
 }

@@ -2,11 +2,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { safeNext } from "@/lib/safe-next";
-import { isEmail } from "@/lib/validate";
+import { signInSchema } from "@/lib/schemas";
 import { canSignIn, missLimited, recordMiss, throttleSignIn } from "@/server/auth/eligibility";
 
-const Body = z.object({
-  email: z.string().trim().toLowerCase().max(254),
+// The sign-in form's own schema (lib/schemas), plus what the page passes along.
+const Body = signInSchema.extend({
   next: z.string().max(2048).optional(),
   /** Invite token from /invite/<token>: a link invite lets a new address sign up. */
   invite: z.string().min(16).max(128).optional(),
@@ -24,8 +24,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Bad origin." }, { status: 403 });
   }
   const parsed = Body.safeParse(await request.json().catch(() => null));
-  if (!parsed.success || !isEmail(parsed.data.email)) {
-    return NextResponse.json({ error: "Enter a full email address, like ada@gmail.com." }, { status: 400 });
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Enter a full email address, like ada@gmail.com." }, { status: 400 });
   }
   const { email, invite } = parsed.data;
   const next = safeNext(parsed.data.next, "/c");

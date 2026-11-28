@@ -14,7 +14,8 @@ import { api, apiError } from "@/lib/api";
 import { ROLE_LABEL, type CommunityRole, type SpaceRole } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { FieldError, invalid } from "@/components/form-field";
-import { emailError, intError } from "@/lib/validate";
+import { useZodForm } from "@/components/use-zod-form";
+import { inviteSchema } from "@/lib/schemas";
 
 export type InviteScope =
   | { kind: "community"; communitySlug: string }
@@ -36,28 +37,17 @@ type Role = CommunityRole | SpaceRole;
 
 export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; roles: Role[]; invites: ActiveInvite[] }) {
   const router = useRouter();
-  const [mode, setMode] = useState<"email" | "link">("email");
   const [role, setRole] = useState<Role>(roles.includes("MEMBER") ? "MEMBER" : roles[roles.length - 1]);
-  const [email, setEmail] = useState("");
-  const [maxUses, setMaxUses] = useState<string>("");
-  const [expiresInDays, setExpiresInDays] = useState("14"); // email is the default mode, and email invites last 14 days
+  // Email is the default mode, and email invites last 14 days.
+  const form = useZodForm(inviteSchema, { mode: "email", email: "", maxUses: "", expiresInDays: "14" });
+  const mode = form.watch("mode");
+  const fieldError = form.formState.errors.email?.message ?? form.formState.errors.maxUses?.message;
   const [result, setResult] = useState<{ url: string; emailed: boolean; emailError?: string } | null>(null);
   const [copied, setCopied] = useState(false);
-  const [tried, setTried] = useState(false);
-  const problem = mode === "email" ? emailError(email) : intError(maxUses, { label: "max uses", min: 1, max: 1000 });
-  const shown = tried ? problem : null;
   const [pending, start] = useTransition();
 
-  async function create(e: React.FormEvent) {
-    e.preventDefault();
-    setTried(true);
-    if (problem) return;
+  const create = form.handleSubmit((body) => {
     start(async () => {
-      const body = {
-        email: mode === "email" ? email : null,
-        maxUses: mode === "link" && maxUses ? Number(maxUses) : null,
-        expiresInDays: Number(expiresInDays),
-      };
       const c = api.c({ community: scope.communitySlug });
       const { data, error } =
         scope.kind === "community"
@@ -67,13 +57,13 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
       setResult(data);
       setCopied(false);
       if (mode === "email") {
-        if (data.emailed) toast.success(`Invite emailed to ${email}`);
+        if (data.emailed) toast.success(`Invite emailed to ${body.email}`);
         else toast.warning("Invite created, but the email didn't send. Share the link instead.");
-        setEmail("");
+        form.setValue("email", "");
       }
       router.refresh();
     });
-  }
+  });
 
   async function copy(url: string) {
     await navigator.clipboard.writeText(url);
@@ -100,10 +90,10 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
                 role="tab"
                 aria-selected={mode === m}
                 onClick={() => {
-                  setMode(m);
-                  setTried(false);
+                  form.setValue("mode", m);
+                  form.clearErrors();
                   setResult(null);
-                  setExpiresInDays(m === "email" ? "14" : "7");
+                  form.setValue("expiresInDays", m === "email" ? "14" : "7");
                 }}
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-medium whitespace-nowrap transition-colors",
@@ -120,14 +110,14 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
           {mode === "email" ? (
             <div className="space-y-1.5">
               <Label htmlFor="invite-email">Email address</Label>
-              <Input id="invite-email" type="email" required placeholder="ada@oauife.edu.ng" value={email} onChange={(e) => setEmail(e.target.value)} {...invalid("invite-email", shown)} />
-              <FieldError id="invite-email-error" message={shown} />
+              <Input id="invite-email" type="email" placeholder="ada@oauife.edu.ng" {...form.register("email")} {...invalid("invite-email", fieldError)} />
+              <FieldError id="invite-email-error" message={fieldError} />
             </div>
           ) : (
             <div className="space-y-1.5">
               <Label htmlFor="invite-uses">Max uses</Label>
-              <Input id="invite-uses" type="number" min={1} max={1000} placeholder="Unlimited" value={maxUses} onChange={(e) => setMaxUses(e.target.value)} {...invalid("invite-uses", shown)} />
-              <FieldError id="invite-uses-error" message={shown} />
+              <Input id="invite-uses" type="number" min={1} max={1000} placeholder="Unlimited" {...form.register("maxUses")} {...invalid("invite-uses", fieldError)} />
+              <FieldError id="invite-uses-error" message={fieldError} />
             </div>
           )}
           <div className="space-y-1.5">
@@ -153,8 +143,7 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
             <select
               id="invite-expiry"
               className="h-9 rounded-full border border-input bg-card px-3 text-sm shadow-xs"
-              value={expiresInDays}
-              onChange={(e) => setExpiresInDays(e.target.value)}
+              {...form.register("expiresInDays")}
             >
               {[1, 3, 7, 14, 30, 90].map((d) => (
                 <option key={d} value={d}>

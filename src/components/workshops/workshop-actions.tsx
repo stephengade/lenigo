@@ -7,40 +7,24 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Field, invalid, NativeSelect } from "@/components/form-field";
-import { allValid, isPast, textError, urlError } from "@/lib/validate";
+import { useZodForm } from "@/components/use-zod-form";
+import { workshopSchema } from "@/lib/schemas";
 import { spaceApi, useApiAction } from "@/components/use-api-action";
 import { cn } from "@/lib/utils";
 
 type Scope = { c: string; s: string };
 
-/** datetime-local works in the viewer's own timezone; the server stores UTC. */
-const toIso = (local: string) => (local ? new Date(local).toISOString() : null);
+// datetime-local works in the viewer's own timezone; workshopSchema turns it into UTC for the server.
 
 export function ScheduleDialog({ c, s }: Scope) {
   const [open, setOpen] = useState(false);
   const { pending, run } = useApiAction();
-  const [title, setTitle] = useState("");
-  const [kind, setKind] = useState<"WORKSHOP" | "STANDUP_REVIEW">("WORKSHOP");
-  const [type, setType] = useState<"ONLINE_CALL" | "PHYSICAL">("ONLINE_CALL");
-  const [startsAt, setStarts] = useState("");
-  const [endsAt, setEnds] = useState("");
-  const [meetingUrl, setUrl] = useState("");
-  const [venue, setVenue] = useState("");
-  const [agenda, setAgenda] = useState("");
-  const [tried, setTried] = useState(false);
-  /** Checked on submit (reading the clock while rendering isn't allowed). */
-  const [inPast, setInPast] = useState(false);
-  const start = startsAt ? new Date(startsAt) : null;
-  const end = endsAt ? new Date(endsAt) : null;
-  const errors = {
-    title: textError(title, { label: "a title", min: 3, max: 120 }),
-    start: !start || Number.isNaN(start.getTime()) ? "Pick when it starts." : inPast ? "That time has already passed." : null,
-    end: end && start && !Number.isNaN(end.getTime()) && end <= start ? "The end must be after the start." : null,
-    url: type === "ONLINE_CALL" ? urlError(meetingUrl, { required: true, label: "call link" }) : null,
-    venue: type === "PHYSICAL" ? textError(venue, { label: "the venue", min: 2, max: 200 }) : null,
-    agenda: textError(agenda, { label: "the agenda", max: 4000 }),
-  };
-  const err = (k: keyof typeof errors) => (tried ? errors[k] : null);
+  const form = useZodForm(workshopSchema, { title: "", kind: "WORKSHOP", type: "ONLINE_CALL", startsAt: "", endsAt: "", meetingUrl: "", venue: "", agendaMd: "" });
+  const { register, formState } = form;
+  const err = (k: "title" | "startsAt" | "endsAt" | "meetingUrl" | "venue" | "agendaMd") => formState.errors[k]?.message;
+  const kind = form.watch("kind");
+  const type = form.watch("type");
+  const startsAt = form.watch("startsAt");
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button />}>
@@ -50,27 +34,7 @@ export function ScheduleDialog({ c, s }: Scope) {
         <form
           noValidate
           className="space-y-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setTried(true);
-            const past = !!start && isPast(start);
-            setInPast(past);
-            if (past || !allValid(errors)) return;
-            run(
-              () =>
-                spaceApi(c, s).workshops.post({
-                  title,
-                  kind,
-                  type,
-                  startsAt: toIso(startsAt)!,
-                  endsAt: toIso(endsAt),
-                  meetingUrl: type === "ONLINE_CALL" ? meetingUrl : null,
-                  venue: type === "PHYSICAL" ? venue : null,
-                  agendaMd: agenda || null,
-                }),
-              { success: "Scheduled", onDone: () => setOpen(false) },
-            );
-          }}
+          onSubmit={form.handleSubmit((v) => run(() => spaceApi(c, s).workshops.post(v), { success: "Scheduled", onDone: () => setOpen(false) }))}
         >
           <DialogHeader>
             <DialogTitle>Schedule a session</DialogTitle>
@@ -83,45 +47,41 @@ export function ScheduleDialog({ c, s }: Scope) {
                 ["STANDUP_REVIEW", "Standup review"],
               ] as const
             ).map(([v, l]) => (
-              <button key={v} type="button" onClick={() => setKind(v)} className={cn("rounded-full px-3 py-1.5 font-medium", kind === v ? "bg-ink text-ink-foreground" : "text-muted-foreground")}>
+              <button key={v} type="button" onClick={() => form.setValue("kind", v)} className={cn("rounded-full px-3 py-1.5 font-medium", kind === v ? "bg-ink text-ink-foreground" : "text-muted-foreground")}>
                 {l}
               </button>
             ))}
           </div>
           <Field label="Title" htmlFor="w-title" error={err("title")}>
-            <Input id="w-title" required maxLength={120} value={title} onChange={(e) => setTitle(e.target.value)} {...invalid("w-title", err("title"))} placeholder={kind === "WORKSHOP" ? "Intro to Git and GitHub" : "Friday demo session"} />
+            <Input id="w-title" maxLength={120} {...register("title")} {...invalid("w-title", err("title"))} placeholder={kind === "WORKSHOP" ? "Intro to Git and GitHub" : "Friday demo session"} />
           </Field>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Starts" htmlFor="w-start" error={err("start")}>
-              <Input id="w-start" type="datetime-local" required value={startsAt} onChange={(e) => {
-                  setStarts(e.target.value);
-                  setInPast(false);
-                }}
-                {...invalid("w-start", err("start"))} />
+            <Field label="Starts" htmlFor="w-start" error={err("startsAt")}>
+              <Input id="w-start" type="datetime-local" {...register("startsAt")} {...invalid("w-start", err("startsAt"))} />
             </Field>
-            <Field label="Ends (optional)" htmlFor="w-end" error={err("end")}>
-              <Input id="w-end" type="datetime-local" min={startsAt || undefined} value={endsAt} onChange={(e) => setEnds(e.target.value)} {...invalid("w-end", err("end"))} />
+            <Field label="Ends (optional)" htmlFor="w-end" error={err("endsAt")}>
+              <Input id="w-end" type="datetime-local" min={startsAt || undefined} {...register("endsAt")} {...invalid("w-end", err("endsAt"))} />
             </Field>
           </div>
           <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
             <Field label="Where" htmlFor="w-type">
-              <NativeSelect id="w-type" value={type} onChange={(e) => setType(e.target.value as typeof type)}>
+              <NativeSelect id="w-type" {...register("type")}>
                 <option value="ONLINE_CALL">Online call</option>
                 <option value="PHYSICAL">In person</option>
               </NativeSelect>
             </Field>
             {type === "ONLINE_CALL" ? (
-              <Field label="Call link" htmlFor="w-url" hint="Only people who RSVP see it." error={err("url")}>
-                <Input id="w-url" type="url" required value={meetingUrl} onChange={(e) => setUrl(e.target.value)} placeholder="https://meet.google.com/…" {...invalid("w-url", err("url"))} />
+              <Field label="Call link" htmlFor="w-url" hint="Only people who RSVP see it." error={err("meetingUrl")}>
+                <Input id="w-url" type="url" placeholder="https://meet.google.com/…" {...register("meetingUrl")} {...invalid("w-url", err("meetingUrl"))} />
               </Field>
             ) : (
               <Field label="Venue" htmlFor="w-venue" error={err("venue")}>
-                <Input id="w-venue" required maxLength={200} value={venue} onChange={(e) => setVenue(e.target.value)} {...invalid("w-venue", err("venue"))} />
+                <Input id="w-venue" maxLength={200} {...register("venue")} {...invalid("w-venue", err("venue"))} />
               </Field>
             )}
           </div>
-          <Field label="Agenda (optional)" htmlFor="w-agenda" error={err("agenda")}>
-            <Textarea id="w-agenda" rows={3} maxLength={4000} value={agenda} onChange={(e) => setAgenda(e.target.value)} />
+          <Field label="Agenda (optional)" htmlFor="w-agenda" error={err("agendaMd")}>
+            <Textarea id="w-agenda" rows={3} maxLength={4000} {...register("agendaMd")} {...invalid("w-agenda", err("agendaMd"))} />
           </Field>
           <DialogFooter>
             <Button type="submit" disabled={pending}>

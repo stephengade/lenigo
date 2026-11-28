@@ -214,6 +214,121 @@ check("blank text doesn't count as filled in", V.textError("          ", { label
 check("numbers must be whole and in range", V.intError("2.5", { label: "hours", min: 1, max: 80 }) !== null && V.intError("81", { label: "hours", min: 1, max: 80 }) !== null && V.intError("8", { label: "hours", min: 1, max: 80 }) === null);
 await refuses("a blank quiz option is refused (it would shift the answer key)", () => curriculum.addQuestion(lead, cp1.id, { prompt: "Which is right?", options: ["A", "", "C"], correctOptionIndex: 2 }), /every answer option/);
 
+console.log("\nForm schemas (lib/schemas): required vs optional");
+{
+  const Z = await import("@/lib/schemas");
+  type Parsed = { success: boolean; data?: unknown; error?: { issues: { path: PropertyKey[]; message: string }[] } };
+  const parse = (schema: { safeParse: (v: unknown) => Parsed }, v: unknown) => schema.safeParse(v);
+  /** The field paths a parse refused, e.g. ["email", "links.1"]. */
+  const failed = (r: Parsed) => (r.success ? [] : r.error!.issues.map((i) => i.path.join(".")));
+  const tested = new Set<string>();
+  /** A schema with: one valid input, its optional fields (must pass empty, come out null) and required ones (must fail empty or blank). */
+  const suite = (
+    name: string,
+    schema: { safeParse: (v: unknown) => Parsed },
+    valid: Record<string, unknown>,
+    opts: { optional?: string[]; required?: string[]; out?: (d: Record<string, unknown>) => boolean },
+  ) => {
+    tested.add(name);
+    const ok = parse(schema, valid);
+    check(`${name}: a complete valid form passes`, ok.success, JSON.stringify(ok.error?.issues ?? []));
+    if (ok.success && opts.out) check(`${name}: output is cleaned up`, opts.out(ok.data as Record<string, unknown>), JSON.stringify(ok.data));
+    for (const f of opts.optional ?? []) {
+      const r = parse(schema, { ...valid, [f]: "" });
+      check(`${name}: optional "${f}" may be left empty`, r.success, JSON.stringify(failed(r)));
+      if (r.success) check(`${name}: empty "${f}" comes out as null`, (r.data as Record<string, unknown>)[f] === null, JSON.stringify((r.data as Record<string, unknown>)[f]));
+    }
+    for (const f of opts.required ?? []) {
+      const empty = parse(schema, { ...valid, [f]: "" });
+      check(`${name}: required "${f}" can't be empty`, !empty.success && failed(empty).includes(f), JSON.stringify(failed(empty)));
+      const blank = parse(schema, { ...valid, [f]: "    " });
+      check(`${name}: "${f}" of only spaces is refused`, !blank.success && failed(blank).includes(f), JSON.stringify(failed(blank)));
+    }
+  };
+
+  suite("signInSchema", Z.signInSchema, { email: "  Ada@Gmail.com " }, { required: ["email"], out: (d) => d.email === "ada@gmail.com" });
+  check("signInSchema: ada@gmail is refused", failed(parse(Z.signInSchema, { email: "ada@gmail" })).includes("email"));
+
+  const bring = { name: "Ada", email: "ada@gmail.com", communityName: "GDG OAU", location: "Ile-Ife", size: "50–200", about: "Weekly web dev sessions on campus.", link: "https://gdg.community.dev/oau", website: "" };
+  suite("bringSchema", Z.bringSchema, bring, { optional: ["location", "link"], required: ["name", "email", "communityName", "about"] });
+  check("bringSchema: the honeypot may stay empty", parse(Z.bringSchema, bring).success);
+  check("bringSchema: a size must be picked", failed(parse(Z.bringSchema, { ...bring, size: "" })).includes("size"));
+
+  suite("provisionSchema", Z.provisionSchema, { name: "GDG OAU", slug: "gdg-oau", description: "GDG at OAU", ownerEmail: "lead@example.com" }, { optional: ["description"], required: ["name", "ownerEmail"] });
+  check("provisionSchema: a slug is required", failed(parse(Z.provisionSchema, { name: "GDG OAU", slug: "", description: "", ownerEmail: "lead@example.com" })).includes("slug"));
+  check("provisionSchema: a bad slug is refused", failed(parse(Z.provisionSchema, { name: "GDG OAU", slug: "-Bad Slug", description: "", ownerEmail: "lead@example.com" })).includes("slug"));
+
+  const space = { name: "Web Development", slug: "web-development", description: "Build for the web", joinPolicy: "OPEN" };
+  suite("createSpaceSchema", Z.createSpaceSchema, space, { optional: ["description"], required: ["name"] });
+  check("createSpaceSchema: the slug may be left empty (made from the name)", parse(Z.createSpaceSchema, { ...space, slug: "" }).success);
+
+  const inv = (v: Record<string, string>) => parse(Z.inviteSchema, { mode: "email", email: "", maxUses: "", expiresInDays: "14", ...v });
+  tested.add("inviteSchema");
+  check("inviteSchema: an email invite needs an address", failed(inv({})).includes("email"));
+  check("inviteSchema: …a full one", failed(inv({ email: "ada@gmail" })).includes("email"));
+  check("inviteSchema: a valid email invite passes", inv({ email: "ada@gmail.com" }).success);
+  check("inviteSchema: a link invite needs no address and no limit", inv({ mode: "link" }).success && (inv({ mode: "link" }).data as { maxUses: unknown }).maxUses === null);
+  check("inviteSchema: a link's use limit must be 1–1000", failed(inv({ mode: "link", maxUses: "0" })).includes("maxUses") && failed(inv({ mode: "link", maxUses: "2.5" })).includes("maxUses"));
+  check("inviteSchema: the address isn't checked for link invites", inv({ mode: "link", email: "junk" }).success);
+
+  const onboard = { goalTrackId: "t1", experience: "I built a portfolio site.", links: ["https://github.com/ada", "", ""], hoursPerWeek: "6" };
+  suite("onboardingSchema", Z.onboardingSchema, onboard, { required: ["goalTrackId", "experience", "hoursPerWeek"], out: (d) => d.hoursPerWeek === 6 && JSON.stringify(d.links) === '["https://github.com/ada"]' });
+  check("onboardingSchema: all three links may be empty", parse(Z.onboardingSchema, { ...onboard, links: ["", "", ""] }).success);
+  check("onboardingSchema: a bad link is pinned to its own box", failed(parse(Z.onboardingSchema, { ...onboard, links: ["", "https://github", ""] })).includes("links.1"));
+
+  suite("projectSchema", Z.projectSchema, { repoUrl: "https://github.com/ada/site", liveUrl: "https://ada.dev", notes: "Try it on a phone" }, { optional: ["liveUrl", "notes"], required: ["repoUrl"] });
+  check("projectSchema: http:// is refused", failed(parse(Z.projectSchema, { repoUrl: "http://github.com/a/b", liveUrl: "", notes: "" })).includes("repoUrl"));
+
+  const prof = { name: "Ada Lovelace", username: "Ada-L", bio: "Learning React", emailNotifications: false };
+  suite("profileSchema", Z.profileSchema, prof, { optional: ["bio"], required: ["name", "username"], out: (d) => d.username === "ada-l" && d.emailNotifications === false });
+  check("profileSchema: a bad username is refused", failed(parse(Z.profileSchema, { ...prof, username: "-x" })).includes("username"));
+
+  suite("standupSchema", Z.standupSchema, { didToday: "Finished the flexbox lesson.", nextStep: "Start grid", blockers: "None", moduleId: "" }, { optional: ["blockers"], required: ["didToday", "nextStep"], out: (d) => d.moduleId === null });
+  suite("commentSchema", Z.commentSchema, { body: "Nice work!" }, { required: ["body"] });
+  suite("reviewSchema", Z.reviewSchema, { feedback: "Clean layout, add alt text.", score: "" }, { required: ["feedback"] });
+  check("scoreField: required to approve, 0–100, whole", !Z.scoreField.safeParse("").success && !Z.scoreField.safeParse("101").success && !Z.scoreField.safeParse("7.5").success && Z.scoreField.safeParse("80").data === 80);
+  tested.add("scoreField");
+  suite("placementReviewSchema", Z.placementReviewSchema, { feedback: "Strong task, ready for Intermediate." }, { required: ["feedback"] });
+  suite("promoteSchema", Z.promoteSchema, { reason: "Finished every Beginner module." }, { required: ["reason"] });
+  suite("addTrackSchema", Z.addTrackSchema, { trackId: "t2", note: "Ready for backend" }, { optional: ["note"], required: ["trackId"] });
+
+  const soon = new Date(Date.now() + 86_400_000);
+  const local = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+  const ws = { title: "Intro to Git", kind: "WORKSHOP", type: "ONLINE_CALL", startsAt: local(soon), endsAt: "", meetingUrl: "https://meet.google.com/abc-defg-hij", venue: "", agendaMd: "" };
+  suite("workshopSchema", Z.workshopSchema, ws, { optional: ["endsAt", "agendaMd"], required: ["title", "startsAt", "meetingUrl"] });
+  check("workshopSchema: online needs no venue", parse(Z.workshopSchema, ws).success);
+  check("workshopSchema: in person needs a venue, not a link", failed(parse(Z.workshopSchema, { ...ws, type: "PHYSICAL", meetingUrl: "" })).join() === "venue" && parse(Z.workshopSchema, { ...ws, type: "PHYSICAL", meetingUrl: "", venue: "Hall B" }).success);
+  check("workshopSchema: the start can't be in the past", failed(parse(Z.workshopSchema, { ...ws, startsAt: local(new Date(Date.now() - 3_600_000)) })).includes("startsAt"));
+  check("workshopSchema: the end must come after the start", failed(parse(Z.workshopSchema, { ...ws, endsAt: local(new Date(soon.getTime() - 60_000)) })).includes("endsAt"));
+
+  suite("trackSchema", Z.trackSchema, { title: "Frontend", description: "HTML to React" }, { optional: ["description"], required: ["title"] });
+  suite("trackSettingsSchema", Z.trackSettingsSchema, { title: "Frontend", description: "", prerequisiteTrackId: "", prerequisiteTier: "INTERMEDIATE", placementTaskMd: "" }, { optional: ["description", "placementTaskMd"], required: ["title"] });
+  suite("nameSchema", Z.nameSchema("the level's name", 60), { title: "Beginner" }, { required: ["title"] });
+  suite("addModuleSchema", Z.addModuleSchema, { title: "HTML basics", branchId: "" }, { required: ["title"], out: (d) => d.branchId === null });
+  suite("moduleSchema", Z.moduleSchema, { title: "HTML basics", summary: "Tags", projectBriefMd: "Build a page", branchId: "" }, { optional: ["summary", "projectBriefMd"], required: ["title"] });
+
+  const lesson = Z.resourceSchema((u) => !!V.parseHttpsUrl(u) && u.includes("youtube"));
+  const vid = { type: "VIDEO", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", title: "HTML crash course", sourceName: "", minutes: "12" };
+  suite("resourceSchema", lesson, vid, { optional: ["sourceName"], required: ["url", "title"], out: (d) => d.minutes === 12 });
+  check("resourceSchema: a video needs its length", failed(parse(lesson, { ...vid, minutes: "" })).includes("minutes"));
+  check("resourceSchema: an article's reading time is optional", parse(lesson, { ...vid, type: "ARTICLE", url: "https://developer.mozilla.org/en-US/", minutes: "" }).success);
+
+  suite("checkpointSchema", Z.checkpointSchema, { title: "Flexbox basics", afterResourceId: "", passThreshold: "80" }, { required: ["title", "passThreshold"], out: (d) => d.passThreshold === 80 && d.afterResourceId === null });
+  check("checkpointSchema: pass mark stays within 50–100", failed(parse(Z.checkpointSchema, { title: "Quiz", afterResourceId: "", passThreshold: "40" })).includes("passThreshold"));
+
+  const q = { prompt: "What does HTML stand for?", codeSnippet: "", options: ["HyperText Markup Language", "", "Home Tool", ""], correct: 0, explanation: "" };
+  suite("questionSchema", Z.questionSchema, q, { optional: ["codeSnippet", "explanation"], required: ["prompt"], out: (d) => JSON.stringify(d.options) === '["HyperText Markup Language","Home Tool"]' && d.correctOptionIndex === 0 });
+  check("questionSchema: blank answers are dropped and the right one remapped", (parse(Z.questionSchema, { ...q, correct: 2 }).data as { correctOptionIndex: number }).correctOptionIndex === 1);
+  check("questionSchema: a blank answer can't be the correct one", failed(parse(Z.questionSchema, { ...q, correct: 1 })).includes("options"));
+  check("questionSchema: at least two answers", failed(parse(Z.questionSchema, { ...q, options: ["Only one", "", "", ""] })).includes("options"));
+  check("questionSchema: answers must differ", failed(parse(Z.questionSchema, { ...q, options: ["Same", "same", "", ""] })).includes("options"));
+
+  // Guard: a schema added to lib/schemas without tests here fails the run.
+  const exported = Object.entries(Z).filter(([k, v]) => (k.endsWith("Schema") || k === "scoreField") && v).map(([k]) => k);
+  const untested = exported.filter((k) => !tested.has(k));
+  check("every form schema is tested here", untested.length === 0, untested.join(", "));
+}
+
 console.log("\nReadable URLs and step pages");
 const steps = await import("@/lib/module-steps");
 check("module slug from its title", m1.slug === "the-web-html-and-css", m1.slug);

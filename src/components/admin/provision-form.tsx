@@ -12,7 +12,8 @@ import { ButtonLink } from "@/components/button-link";
 import { api, apiError } from "@/lib/api";
 import { slugify } from "@/lib/utils";
 import { FieldError, invalid } from "@/components/form-field";
-import { allValid, emailError, textError } from "@/lib/validate";
+import { useZodForm } from "@/components/use-zod-form";
+import { provisionSchema } from "@/lib/schemas";
 
 const SUGGESTIONS = ["Web Development", "Data Science", "Mobile Development", "Cloud & DevOps", "UI/UX Design", "AI & ML"];
 
@@ -22,27 +23,17 @@ type Result = { slug: string; spaces: string[]; ownerInviteUrl: string; emailed:
 export function ProvisionForm({ initial }: { initial?: { name?: string; ownerEmail?: string } } = {}) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [name, setName] = useState(initial?.name ?? "");
-  const [slug, setSlug] = useState("");
+  const form = useZodForm(provisionSchema, { name: initial?.name ?? "", slug: slugify(initial?.name ?? ""), description: "", ownerEmail: initial?.ownerEmail ?? "" });
+  const { register, formState } = form;
+  const err = (k: keyof typeof formState.errors) => formState.errors[k]?.message;
+  /** The slug follows the name until someone edits it by hand. */
   const [slugTouched, setSlugTouched] = useState(false);
-  const [description, setDescription] = useState("");
-  const [ownerEmail, setOwnerEmail] = useState(initial?.ownerEmail ?? "");
+  const name = form.watch("name");
+  const ownerEmail = form.watch("ownerEmail");
   const [spaces, setSpaces] = useState<string[]>([]);
   const [draft, setDraft] = useState("");
   const [result, setResult] = useState<Result | null>(null);
   const [copied, setCopied] = useState(false);
-  const effectiveSlug = slugTouched ? slug : slugify(name);
-  const [tried, setTried] = useState(false);
-  const errors = {
-    name: textError(name, { label: "the community's name", min: 2, max: 80 }),
-    slug: !effectiveSlug
-      ? "Add a URL slug."
-      : /^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/.test(effectiveSlug)
-        ? null
-        : "Use lowercase letters, numbers and single hyphens (not at the start or end).",
-    ownerEmail: emailError(ownerEmail),
-  };
-  const err = (k: keyof typeof errors) => (tried ? errors[k] : null);
 
   function addSpace(value: string) {
     const v = value.trim();
@@ -51,26 +42,23 @@ export function ProvisionForm({ initial }: { initial?: { name?: string; ownerEma
     setDraft("");
   }
 
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setTried(true);
-    if (!allValid(errors)) return;
+  const submit = form.handleSubmit((v) => {
     const pendingSpaces = draft.trim() ? [...spaces, draft.trim()] : spaces;
     start(async () => {
       const { data, error } = await api.admin.communities.post({
-        name,
-        slug: effectiveSlug,
-        description: description || undefined,
-        ownerEmail,
+        name: v.name,
+        slug: v.slug,
+        description: v.description ?? undefined,
+        ownerEmail: v.ownerEmail,
         spaces: pendingSpaces,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
       if (error) return void toast.error(apiError(error));
       setResult(data);
-      toast.success(`${name} is live at /c/${data.slug}`);
+      toast.success(`${v.name} is live at /c/${data.slug}`);
       router.refresh();
     });
-  }
+  });
 
   if (result) {
     return (
@@ -116,11 +104,8 @@ export function ProvisionForm({ initial }: { initial?: { name?: string; ownerEma
             variant="ghost"
             onClick={() => {
               setResult(null);
-              setName("");
-              setSlug("");
+              form.reset({ name: "", slug: "", description: "", ownerEmail: "" });
               setSlugTouched(false);
-              setDescription("");
-              setOwnerEmail("");
               setSpaces([]);
               setCopied(false);
             }}
@@ -139,7 +124,17 @@ export function ProvisionForm({ initial }: { initial?: { name?: string; ownerEma
         <div className="grid gap-5 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="name">Community name</Label>
-            <Input id="name" required minLength={2} maxLength={80} placeholder="GDG OAU" value={name} onChange={(e) => setName(e.target.value)} {...invalid("name", err("name"))} />
+            <Input
+              id="name"
+              maxLength={80}
+              placeholder="GDG OAU"
+              {...register("name", {
+                onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+                  if (!slugTouched) form.setValue("slug", slugify(e.target.value), { shouldValidate: formState.isSubmitted });
+                },
+              })}
+              {...invalid("name", err("name"))}
+            />
             <FieldError id="name-error" message={err("name")} />
           </div>
           <div className="space-y-1.5">
@@ -148,16 +143,12 @@ export function ProvisionForm({ initial }: { initial?: { name?: string; ownerEma
               <span>/c/</span>
               <input
                 id="slug"
-                required
-                pattern="[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?"
-                title="Lowercase letters, numbers and hyphens"
                 className="h-8 min-w-0 flex-1 bg-transparent pr-3 text-foreground outline-none"
                 placeholder="gdg-oau"
-                value={effectiveSlug}
-                onChange={(e) => {
-                  setSlugTouched(true);
-                  setSlug(e.target.value.toLowerCase());
-                }}
+                {...register("slug", {
+                  setValueAs: (v: string) => v.toLowerCase(),
+                  onChange: () => setSlugTouched(true),
+                })}
                 {...invalid("slug", err("slug"))}
               />
             </div>
@@ -171,9 +162,10 @@ export function ProvisionForm({ initial }: { initial?: { name?: string; ownerEma
             rows={2}
             maxLength={500}
             placeholder="Google Developer Group at Obafemi Awolowo University."
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            {...register("description")}
+            {...invalid("description", err("description"))}
           />
+          <FieldError id="description-error" message={err("description")} />
         </div>
       </section>
 
@@ -241,7 +233,7 @@ export function ProvisionForm({ initial }: { initial?: { name?: string; ownerEma
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="owner">Community Lead email</Label>
-          <Input id="owner" type="email" required placeholder="lead@gdg-oau.dev" value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} {...invalid("owner", err("ownerEmail"))} />
+          <Input id="owner" type="email" placeholder="lead@gdg-oau.dev" {...register("ownerEmail")} {...invalid("owner", err("ownerEmail"))} />
           <FieldError id="owner-error" message={err("ownerEmail")} />
         </div>
       </section>

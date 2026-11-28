@@ -8,7 +8,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Field, FieldError, invalid, NativeSelect } from "@/components/form-field";
-import { allValid, textError, urlError } from "@/lib/validate";
+import { useZodForm } from "@/components/use-zod-form";
+import { addModuleSchema, checkpointSchema, moduleSchema, nameSchema, questionSchema, resourceSchema, trackSchema, trackSettingsSchema } from "@/lib/schemas";
 import { parseDriveId, parseYouTubeId } from "@/lib/video";
 import { spaceApi, useApiAction } from "@/components/use-api-action";
 import { LEVEL_LABEL, LEVELS, type LevelTier } from "@/lib/permissions";
@@ -22,8 +23,8 @@ export function CreateTrackDialog({ c, s }: Scope) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const { pending, run } = useApiAction();
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
+  const form = useZodForm(trackSchema, { title: "", description: "" });
+  const err = (k: "title" | "description") => form.formState.errors[k]?.message;
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button />}>
@@ -31,27 +32,27 @@ export function CreateTrackDialog({ c, s }: Scope) {
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <form
+          noValidate
           className="space-y-5"
-          onSubmit={(e) => {
-            e.preventDefault();
-            run(() => spaceApi(c, s).tracks.post({ title, description: description || null }), {
+          onSubmit={form.handleSubmit((v) =>
+            run(() => spaceApi(c, s).tracks.post(v), {
               success: "Track created with three levels",
               onDone: (d) => {
                 setOpen(false);
                 router.push(`/c/${c}/${s}/curriculum/${d.id}`);
               },
-            });
-          }}
+            }),
+          )}
         >
           <DialogHeader>
             <DialogTitle>New track</DialogTitle>
             <DialogDescription>A path learners follow from their first lesson to shipping real work, like Frontend, Backend or Data Analysis.</DialogDescription>
           </DialogHeader>
-          <Field label="Name" htmlFor="track-title">
-            <Input id="track-title" required minLength={2} maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Frontend" />
+          <Field label="Name" htmlFor="track-title" error={err("title")}>
+            <Input id="track-title" maxLength={80} placeholder="Frontend" {...form.register("title")} {...invalid("track-title", err("title"))} />
           </Field>
-          <Field label="What learners will be able to do" htmlFor="track-desc">
-            <Textarea id="track-desc" rows={3} maxLength={500} value={description} onChange={(e) => setDescription(e.target.value)} />
+          <Field label="What learners will be able to do" htmlFor="track-desc" error={err("description")}>
+            <Textarea id="track-desc" rows={3} maxLength={500} {...form.register("description")} {...invalid("track-desc", err("description"))} />
           </Field>
           <DialogFooter>
             <Button type="submit" disabled={pending}>
@@ -74,36 +75,40 @@ export function TrackSettingsForm({
   otherTracks: { id: string; title: string }[];
 }) {
   const { pending, run } = useApiAction();
-  const [title, setTitle] = useState(track.title);
-  const [description, setDescription] = useState(track.description ?? "");
-  const [pre, setPre] = useState(track.prerequisiteTrackId ?? "");
-  const [tier, setTier] = useState<LevelTier>(track.prerequisiteTier ?? "INTERMEDIATE");
-  const [task, setTask] = useState(track.placementTaskMd ?? "");
+  const form = useZodForm(trackSettingsSchema, {
+    title: track.title,
+    description: track.description ?? "",
+    prerequisiteTrackId: track.prerequisiteTrackId ?? "",
+    prerequisiteTier: track.prerequisiteTier ?? "INTERMEDIATE",
+    placementTaskMd: track.placementTaskMd ?? "",
+  });
+  const err = (k: "title" | "description" | "placementTaskMd") => form.formState.errors[k]?.message;
+  const pre = form.watch("prerequisiteTrackId");
   return (
     <form
+      noValidate
       className="grid gap-4"
-      onSubmit={(e) => {
-        e.preventDefault();
+      onSubmit={form.handleSubmit((v) =>
         run(
           () =>
             spaceApi(c, s).tracks({ id: track.id }).patch({
-              title,
-              description: description || null,
-              prerequisiteTrackId: pre || null,
-              prerequisiteTier: pre ? tier : null,
-              placementTaskMd: task || null,
+              title: v.title,
+              description: v.description,
+              prerequisiteTrackId: v.prerequisiteTrackId || null,
+              prerequisiteTier: v.prerequisiteTrackId ? (v.prerequisiteTier as LevelTier) : null,
+              placementTaskMd: v.placementTaskMd,
             }),
           { success: "Track saved" },
-        );
-      }}
+        ),
+      )}
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Name" htmlFor="t-title">
-          <Input id="t-title" required minLength={2} maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} />
+        <Field label="Name" htmlFor="t-title" error={err("title")}>
+          <Input id="t-title" maxLength={80} {...form.register("title")} {...invalid("t-title", err("title"))} />
         </Field>
         <Field label="Requires" htmlFor="t-pre" hint="Learners can only be added once they reach this level in the other track.">
           <div className="flex gap-2">
-            <NativeSelect id="t-pre" value={pre} onChange={(e) => setPre(e.target.value)}>
+            <NativeSelect id="t-pre" {...form.register("prerequisiteTrackId")}>
               <option value="">Nothing, anyone can start</option>
               {otherTracks.map((t) => (
                 <option key={t.id} value={t.id}>
@@ -112,7 +117,7 @@ export function TrackSettingsForm({
               ))}
             </NativeSelect>
             {pre ? (
-              <NativeSelect aria-label="Level required" value={tier} onChange={(e) => setTier(e.target.value as LevelTier)} className="w-40">
+              <NativeSelect aria-label="Level required" className="w-40" {...form.register("prerequisiteTier")}>
                 {LEVELS.map((l) => (
                   <option key={l} value={l}>
                     {LEVEL_LABEL[l]}+
@@ -123,15 +128,23 @@ export function TrackSettingsForm({
           </div>
         </Field>
       </div>
-      <Field label="Description" htmlFor="t-desc">
-        <Textarea id="t-desc" rows={2} maxLength={500} value={description} onChange={(e) => setDescription(e.target.value)} />
+      <Field label="Description" htmlFor="t-desc" error={err("description")}>
+        <Textarea id="t-desc" rows={2} maxLength={500} {...form.register("description")} {...invalid("t-desc", err("description"))} />
       </Field>
       <Field
         label="Placement test: practical task"
         htmlFor="t-task"
         hint="Leave empty to turn the placement test off. Learners who pass the quiz build this; a mentor reviews it. Markdown works."
+        error={err("placementTaskMd")}
       >
-        <Textarea id="t-task" rows={5} maxLength={8000} value={task} onChange={(e) => setTask(e.target.value)} placeholder={"Build a responsive landing page from this design…\n\n- Semantic HTML\n- Works on a phone"} />
+        <Textarea
+          id="t-task"
+          rows={5}
+          maxLength={8000}
+          placeholder={"Build a responsive landing page from this design…\n\n- Semantic HTML\n- Works on a phone"}
+          {...form.register("placementTaskMd")}
+          {...invalid("t-task", err("placementTaskMd"))}
+        />
       </Field>
       <div>
         <Button type="submit" disabled={pending}>
@@ -227,41 +240,46 @@ export function DeleteButton({ c, s, kind, id, label, redirectTo }: Scope & { ki
 
 export function LevelTitleForm({ c, s, levelId, title }: Scope & { levelId: string; title: string }) {
   const { pending, run } = useApiAction();
-  const [value, setValue] = useState(title);
+  const form = useZodForm(nameSchema("the level's name", 60), { title });
+  const value = form.watch("title");
+  const error = form.formState.errors.title?.message;
   const dirty = value.trim() !== title;
   return (
     <form
-      className="flex min-w-0 flex-1 items-center gap-2"
-      onSubmit={(e) => {
-        e.preventDefault();
-        run(() => spaceApi(c, s).levels({ id: levelId }).patch({ title: value }), { success: "Level renamed" });
-      }}
+      noValidate
+      className="grid min-w-0 flex-1 gap-1"
+      onSubmit={form.handleSubmit((v) => run(() => spaceApi(c, s).levels({ id: levelId }).patch(v), { success: "Level renamed" }))}
     >
-      <Input aria-label="Level name" value={value} maxLength={60} onChange={(e) => setValue(e.target.value)} className="h-9 max-w-xs font-display font-bold" />
-      {dirty ? (
-        <Button type="submit" size="sm" disabled={pending}>
-          Save
-        </Button>
-      ) : null}
+      <div className="flex items-center gap-2">
+        <Input aria-label="Level name" maxLength={60} className="h-9 max-w-xs font-display font-bold" {...form.register("title")} {...invalid(`lv-${levelId}`, error)} />
+        {dirty ? (
+          <Button type="submit" size="sm" disabled={pending}>
+            Save
+          </Button>
+        ) : null}
+      </div>
+      <FieldError id={`lv-${levelId}-error`} message={error} />
     </form>
   );
 }
 
 export function AddBranchForm({ c, s, levelId }: Scope & { levelId: string }) {
   const { pending, run } = useApiAction();
-  const [title, setTitle] = useState("");
+  const form = useZodForm(nameSchema("the option's name", 60), { title: "" });
+  const error = form.formState.errors.title?.message;
   return (
     <form
-      className="flex gap-2"
-      onSubmit={(e) => {
-        e.preventDefault();
-        run(() => spaceApi(c, s).levels({ id: levelId }).branches.post({ title }), { success: "Option added", onDone: () => setTitle("") });
-      }}
+      noValidate
+      className="grid gap-1"
+      onSubmit={form.handleSubmit((v) => run(() => spaceApi(c, s).levels({ id: levelId }).branches.post(v), { success: "Option added", onDone: () => form.reset({ title: "" }) }))}
     >
-      <Input aria-label="New option" placeholder="e.g. React + Next.js" value={title} minLength={2} maxLength={60} required onChange={(e) => setTitle(e.target.value)} className="h-9" />
-      <Button type="submit" size="sm" variant="outline" disabled={pending}>
-        <Plus /> Option
-      </Button>
+      <div className="flex gap-2">
+        <Input aria-label="New option" placeholder="e.g. React + Next.js" maxLength={60} className="h-9" {...form.register("title")} {...invalid(`br-${levelId}`, error)} />
+        <Button type="submit" size="sm" variant="outline" disabled={pending}>
+          <Plus /> Option
+        </Button>
+      </div>
+      <FieldError id={`br-${levelId}-error`} message={error} />
     </form>
   );
 }
@@ -269,33 +287,36 @@ export function AddBranchForm({ c, s, levelId }: Scope & { levelId: string }) {
 export function AddModuleForm({ c, s, levelId, branches }: Scope & { levelId: string; branches: { id: string; title: string }[] }) {
   const router = useRouter();
   const { pending, run } = useApiAction();
-  const [title, setTitle] = useState("");
-  const [branchId, setBranchId] = useState("");
+  const form = useZodForm(addModuleSchema, { title: "", branchId: "" });
+  const error = form.formState.errors.title?.message;
   return (
     <form
-      className="flex flex-wrap gap-2"
-      onSubmit={(e) => {
-        e.preventDefault();
-        run(() => spaceApi(c, s).levels({ id: levelId }).modules.post({ title, branchId: branchId || null }), {
+      noValidate
+      className="grid gap-1"
+      onSubmit={form.handleSubmit((v) =>
+        run(() => spaceApi(c, s).levels({ id: levelId }).modules.post(v), {
           success: "Module added",
           onDone: (d) => router.push(`/c/${c}/${s}/curriculum/modules/${d.id}`),
-        });
-      }}
+        }),
+      )}
     >
-      <Input aria-label="New module" placeholder="New module title" value={title} minLength={2} maxLength={100} required onChange={(e) => setTitle(e.target.value)} className="h-9 min-w-48 flex-1" />
-      {branches.length ? (
-        <NativeSelect aria-label="Part of" value={branchId} onChange={(e) => setBranchId(e.target.value)} className="h-9 w-auto">
-          <option value="">Core (everyone)</option>
-          {branches.map((b) => (
-            <option key={b.id} value={b.id}>
-              Only {b.title}
-            </option>
-          ))}
-        </NativeSelect>
-      ) : null}
-      <Button type="submit" size="sm" disabled={pending}>
-        <Plus /> Module
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Input aria-label="New module" placeholder="New module title" maxLength={100} className="h-9 min-w-48 flex-1" {...form.register("title")} {...invalid(`md-${levelId}`, error)} />
+        {branches.length ? (
+          <NativeSelect aria-label="Part of" className="h-9 w-auto" {...form.register("branchId")}>
+            <option value="">Core (everyone)</option>
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>
+                Only {b.title}
+              </option>
+            ))}
+          </NativeSelect>
+        ) : null}
+        <Button type="submit" size="sm" disabled={pending}>
+          <Plus /> Module
+        </Button>
+      </div>
+      <FieldError id={`md-${levelId}-error`} message={error} />
     </form>
   );
 }
@@ -312,31 +333,30 @@ export function ModuleDetailsForm({
   hasProgress: boolean;
 }) {
   const { pending, run } = useApiAction();
-  const [title, setTitle] = useState(module.title);
-  const [summary, setSummary] = useState(module.summary ?? "");
-  const [brief, setBrief] = useState(module.projectBriefMd ?? "");
-  const [branchId, setBranchId] = useState(module.branchId ?? "");
+  const form = useZodForm(moduleSchema, { title: module.title, summary: module.summary ?? "", projectBriefMd: module.projectBriefMd ?? "", branchId: module.branchId ?? "" });
+  const err = (k: "title" | "summary" | "projectBriefMd") => form.formState.errors[k]?.message;
   return (
     <form
+      noValidate
       className="grid gap-4"
-      onSubmit={(e) => {
-        e.preventDefault();
+      onSubmit={form.handleSubmit((v) =>
         run(
           () =>
             spaceApi(c, s)
               .modules({ id: module.id })
-              .patch({ title, summary: summary || null, projectBriefMd: brief || null, ...(branchId !== (module.branchId ?? "") ? { branchId: branchId || null } : {}) }),
+              // The option is only sent when it changed (moving a module with progress is refused).
+              .patch({ title: v.title, summary: v.summary, projectBriefMd: v.projectBriefMd, ...(v.branchId !== module.branchId ? { branchId: v.branchId } : {}) }),
           { success: "Module saved" },
-        );
-      }}
+        ),
+      )}
     >
       <div className="grid gap-4 sm:grid-cols-[1fr_14rem]">
-        <Field label="Title" htmlFor="m-title">
-          <Input id="m-title" required minLength={2} maxLength={100} value={title} onChange={(e) => setTitle(e.target.value)} />
+        <Field label="Title" htmlFor="m-title" error={err("title")}>
+          <Input id="m-title" maxLength={100} {...form.register("title")} {...invalid("m-title", err("title"))} />
         </Field>
         {branches.length ? (
           <Field label="Who takes it" htmlFor="m-branch" hint={hasProgress ? "Locked: learners have started it." : undefined}>
-            <NativeSelect id="m-branch" value={branchId} disabled={hasProgress} onChange={(e) => setBranchId(e.target.value)}>
+            <NativeSelect id="m-branch" disabled={hasProgress} {...form.register("branchId")}>
               <option value="">Core (everyone)</option>
               {branches.map((b) => (
                 <option key={b.id} value={b.id}>
@@ -347,11 +367,11 @@ export function ModuleDetailsForm({
           </Field>
         ) : null}
       </div>
-      <Field label="Summary" htmlFor="m-summary">
-        <Textarea id="m-summary" rows={2} maxLength={500} value={summary} onChange={(e) => setSummary(e.target.value)} />
+      <Field label="Summary" htmlFor="m-summary" error={err("summary")}>
+        <Textarea id="m-summary" rows={2} maxLength={500} {...form.register("summary")} {...invalid("m-summary", err("summary"))} />
       </Field>
-      <Field label="Capstone project brief" htmlFor="m-brief" hint="Required to publish. What to build, what 'done' looks like, how it's scored. Markdown works.">
-        <Textarea id="m-brief" rows={8} maxLength={10000} value={brief} onChange={(e) => setBrief(e.target.value)} className="font-mono text-xs" />
+      <Field label="Capstone project brief" htmlFor="m-brief" hint="Required to publish. What to build, what 'done' looks like, how it's scored. Markdown works." error={err("projectBriefMd")}>
+        <Textarea id="m-brief" rows={8} maxLength={10000} className="font-mono text-xs" {...form.register("projectBriefMd")} {...invalid("m-brief", err("projectBriefMd"))} />
       </Field>
       <div>
         <Button type="submit" disabled={pending}>
@@ -364,49 +384,25 @@ export function ModuleDetailsForm({
 
 /* ── Lessons ──────────────────────────────────────────────────────── */
 
+/** A YouTube or Drive id is enough for a video lesson (the server rebuilds the link from it). */
+const isVideoSource = (url: string) => !!(parseYouTubeId(url) || parseDriveId(url));
+const lessonSchema = resourceSchema(isVideoSource);
+
 export function AddResourceForm({ c, s, moduleId }: Scope & { moduleId: string }) {
   const { pending, run } = useApiAction();
-  const [type, setType] = useState<"VIDEO" | "ARTICLE">("VIDEO");
-  const [url, setUrl] = useState("");
-  const [title, setTitle] = useState("");
-  const [sourceName, setSourceName] = useState("");
-  const [minutes, setMinutes] = useState("");
-  const [tried, setTried] = useState(false);
-  const mins = Number(minutes);
-  const errors = {
-    // A YouTube or Drive id is enough for a video; anything else must be a complete https link.
-    url: type === "VIDEO" && (parseYouTubeId(url) || parseDriveId(url)) ? null : urlError(url, { required: true, label: "link" }),
-    title: textError(title, { label: "a title", min: 2, max: 160 }),
-    minutes:
-      type === "VIDEO" && !minutes.trim()
-        ? "Enter the video's length in minutes."
-        : minutes.trim() && (!Number.isFinite(mins) || mins <= 0 || mins > 600)
-          ? "Enter a length between 0.5 and 600 minutes."
-          : null,
-  };
-  const err = (k: keyof typeof errors) => (tried ? errors[k] : null);
+  const form = useZodForm(lessonSchema, { type: "VIDEO", url: "", title: "", sourceName: "", minutes: "" });
+  const err = (k: "url" | "title" | "sourceName" | "minutes") => form.formState.errors[k]?.message;
+  const type = form.watch("type");
   return (
     <form
       noValidate
       className="grid gap-3 rounded-2xl border border-dashed border-border p-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        setTried(true);
-        if (!allValid(errors)) return;
-        run(
-          () => spaceApi(c, s).modules({ id: moduleId }).resources.post({ type, url, title, sourceName: sourceName || null, minutes: minutes ? Number(minutes) : null }),
-          {
-            success: "Lesson added",
-            onDone: () => {
-              setUrl("");
-              setTitle("");
-              setSourceName("");
-              setMinutes("");
-              setTried(false);
-            },
-          },
-        );
-      }}
+      onSubmit={form.handleSubmit((v) =>
+        run(() => spaceApi(c, s).modules({ id: moduleId }).resources.post(v), {
+          success: "Lesson added",
+          onDone: () => form.reset({ type: v.type, url: "", title: "", sourceName: "", minutes: "" }),
+        }),
+      )}
     >
       <div className="flex gap-1 rounded-full bg-surface p-1 text-sm">
         {(
@@ -415,7 +411,12 @@ export function AddResourceForm({ c, s, moduleId }: Scope & { moduleId: string }
             ["ARTICLE", "Learn-more link"],
           ] as const
         ).map(([v, l]) => (
-          <button key={v} type="button" onClick={() => setType(v)} className={cn("flex-1 rounded-full px-3 py-1.5 font-medium", type === v ? "bg-ink text-ink-foreground" : "text-muted-foreground")}>
+          <button
+            key={v}
+            type="button"
+            onClick={() => form.setValue("type", v, { shouldValidate: form.formState.isSubmitted })}
+            className={cn("flex-1 rounded-full px-3 py-1.5 font-medium", type === v ? "bg-ink text-ink-foreground" : "text-muted-foreground")}
+          >
             {l}
           </button>
         ))}
@@ -426,17 +427,17 @@ export function AddResourceForm({ c, s, moduleId }: Scope & { moduleId: string }
         hint={type === "VIDEO" ? "YouTube works best (watch time is tracked). Google Drive and other https links work too." : "An https article, docs page or guide. Optional reading."}
         error={err("url")}
       >
-        <Input id="r-url" required value={url} onChange={(e) => setUrl(e.target.value)} {...invalid("r-url", err("url"))} placeholder={type === "VIDEO" ? "https://www.youtube.com/watch?v=…" : "https://developer.mozilla.org/…"} />
+        <Input id="r-url" placeholder={type === "VIDEO" ? "https://www.youtube.com/watch?v=…" : "https://developer.mozilla.org/…"} {...form.register("url")} {...invalid("r-url", err("url"))} />
       </Field>
       <div className="grid gap-3 sm:grid-cols-[1fr_10rem_8rem]">
         <Field label="Title" htmlFor="r-title" error={err("title")}>
-          <Input id="r-title" required minLength={2} maxLength={160} value={title} onChange={(e) => setTitle(e.target.value)} {...invalid("r-title", err("title"))} />
+          <Input id="r-title" maxLength={160} {...form.register("title")} {...invalid("r-title", err("title"))} />
         </Field>
-        <Field label="Creator" htmlFor="r-src">
-          <Input id="r-src" maxLength={80} value={sourceName} onChange={(e) => setSourceName(e.target.value)} placeholder="Channel or site" />
+        <Field label="Creator" htmlFor="r-src" error={err("sourceName")}>
+          <Input id="r-src" maxLength={80} placeholder="Channel or site" {...form.register("sourceName")} {...invalid("r-src", err("sourceName"))} />
         </Field>
         <Field label={type === "VIDEO" ? "Length (min)" : "Read (min)"} htmlFor="r-min" error={err("minutes")}>
-          <Input id="r-min" type="number" min={0} max={600} step="0.5" value={minutes} required={type === "VIDEO"} onChange={(e) => setMinutes(e.target.value)} {...invalid("r-min", err("minutes"))} />
+          <Input id="r-min" type="number" min={0} max={600} step="0.5" {...form.register("minutes")} {...invalid("r-min", err("minutes"))} />
         </Field>
       </div>
       <div>
@@ -452,25 +453,24 @@ export function AddResourceForm({ c, s, moduleId }: Scope & { moduleId: string }
 
 export function AddCheckpointForm({ c, s, moduleId, videos }: Scope & { moduleId: string; videos: { id: string; title: string }[] }) {
   const { pending, run } = useApiAction();
-  const [title, setTitle] = useState("");
-  const [after, setAfter] = useState("");
-  const [threshold, setThreshold] = useState("80");
+  const form = useZodForm(checkpointSchema, { title: "", afterResourceId: "", passThreshold: "80" });
+  const err = (k: "title" | "passThreshold") => form.formState.errors[k]?.message;
   return (
     <form
-      className="grid gap-3 rounded-2xl border border-dashed border-border p-4 sm:grid-cols-[1fr_14rem_7rem_auto] sm:items-end"
-      onSubmit={(e) => {
-        e.preventDefault();
-        run(() => spaceApi(c, s).modules({ id: moduleId }).checkpoints.post({ title, afterResourceId: after || null, passThreshold: Number(threshold) }), {
+      noValidate
+      className="grid gap-3 rounded-2xl border border-dashed border-border p-4 sm:grid-cols-[1fr_14rem_7rem_auto] sm:items-start"
+      onSubmit={form.handleSubmit((v) =>
+        run(() => spaceApi(c, s).modules({ id: moduleId }).checkpoints.post(v), {
           success: "Checkpoint added. Now add its questions.",
-          onDone: () => setTitle(""),
-        });
-      }}
+          onDone: () => form.reset({ title: "", afterResourceId: v.afterResourceId ?? "", passThreshold: String(v.passThreshold) }),
+        }),
+      )}
     >
-      <Field label="Checkpoint" htmlFor="cp-title">
-        <Input id="cp-title" required minLength={2} maxLength={120} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Flexbox basics" />
+      <Field label="Checkpoint" htmlFor="cp-title" error={err("title")}>
+        <Input id="cp-title" maxLength={120} placeholder="Flexbox basics" {...form.register("title")} {...invalid("cp-title", err("title"))} />
       </Field>
       <Field label="Opens after" htmlFor="cp-after">
-        <NativeSelect id="cp-after" value={after} onChange={(e) => setAfter(e.target.value)}>
+        <NativeSelect id="cp-after" {...form.register("afterResourceId")}>
           <option value="">Straight away</option>
           {videos.map((v) => (
             <option key={v.id} value={v.id}>
@@ -479,96 +479,67 @@ export function AddCheckpointForm({ c, s, moduleId, videos }: Scope & { moduleId
           ))}
         </NativeSelect>
       </Field>
-      <Field label="Pass mark %" htmlFor="cp-th">
-        <Input id="cp-th" type="number" min={50} max={100} value={threshold} onChange={(e) => setThreshold(e.target.value)} />
+      <Field label="Pass mark %" htmlFor="cp-th" error={err("passThreshold")}>
+        <Input id="cp-th" type="number" min={50} max={100} {...form.register("passThreshold")} {...invalid("cp-th", err("passThreshold"))} />
       </Field>
-      <Button type="submit" size="sm" disabled={pending} className="h-11">
+      <Button type="submit" size="sm" disabled={pending} className="h-11 sm:mt-6">
         <Plus /> Add
       </Button>
     </form>
   );
 }
 
+const EMPTY_QUESTION = { prompt: "", codeSnippet: "", options: ["", "", "", ""], correct: 0, explanation: "" };
+
 export function QuestionForm({ c, s, target }: Scope & { target: { kind: "checkpoint"; id: string } | { kind: "placement"; trackId: string } }) {
   const { pending, run } = useApiAction();
   const [open, setOpen] = useState(false);
-  const [prompt, setPrompt] = useState("");
-  const [code, setCode] = useState("");
-  const [options, setOptions] = useState(["", "", "", ""]);
-  const [correct, setCorrect] = useState(0);
-  const [explanation, setExplanation] = useState("");
-  const [tried, setTried] = useState(false);
-  const kept = options.map((o) => o.trim()).filter(Boolean);
-  const qErrors = {
-    prompt: textError(prompt, { label: "the question", min: 3, max: 1000 }),
-    options:
-      kept.length < 2
-        ? "Fill in at least two answers."
-        : new Set(kept.map((o) => o.toLowerCase())).size !== kept.length
-          ? "Each answer must be different."
-          : !options[correct]?.trim()
-            ? "The answer marked correct is empty. Pick a filled-in one."
-            : null,
-  };
+  const form = useZodForm(questionSchema, EMPTY_QUESTION);
+  const correct = form.watch("correct");
+  const promptError = form.formState.errors.prompt?.message;
+  const optionsError = form.formState.errors.options?.message ?? form.formState.errors.options?.root?.message;
   if (!open)
     return (
       <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
         <Plus /> Question
       </Button>
     );
-  const reset = () => {
-    setPrompt("");
-    setCode("");
-    setOptions(["", "", "", ""]);
-    setCorrect(0);
-    setExplanation("");
-    setTried(false);
-  };
   return (
     <form
       noValidate
       className="grid gap-3 rounded-2xl bg-surface p-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        setTried(true);
-        if (!allValid(qErrors)) return;
-        const filled = options.map((o) => o.trim());
-        const kept = filled.filter(Boolean);
-        const correctIndex = kept.indexOf(filled[correct]);
-        const body = { prompt, codeSnippet: code || null, options: kept, correctOptionIndex: Math.max(0, correctIndex), explanation: explanation || null };
+      onSubmit={form.handleSubmit((body) =>
         run(
           () => (target.kind === "checkpoint" ? spaceApi(c, s).checkpoints({ id: target.id }).questions.post(body) : spaceApi(c, s).tracks({ id: target.trackId })["placement-questions"].post(body)),
-          { success: "Question added", onDone: reset },
-        );
-      }}
+          { success: "Question added", onDone: () => form.reset(EMPTY_QUESTION) },
+        ),
+      )}
     >
-      <Field label="Question" htmlFor="q-prompt" error={tried ? qErrors.prompt : null}>
-        <Textarea id="q-prompt" rows={2} required maxLength={1000} value={prompt} onChange={(e) => setPrompt(e.target.value)} {...invalid("q-prompt", tried ? qErrors.prompt : null)} />
+      <Field label="Question" htmlFor="q-prompt" error={promptError}>
+        <Textarea id="q-prompt" rows={2} maxLength={1000} {...form.register("prompt")} {...invalid("q-prompt", promptError)} />
       </Field>
-      <Field label="Code (optional)" htmlFor="q-code">
-        <Textarea id="q-code" rows={3} maxLength={4000} value={code} onChange={(e) => setCode(e.target.value)} className="font-mono text-xs" />
+      <Field label="Code (optional)" htmlFor="q-code" error={form.formState.errors.codeSnippet?.message}>
+        <Textarea id="q-code" rows={3} maxLength={4000} className="font-mono text-xs" {...form.register("codeSnippet")} />
       </Field>
       <fieldset className="grid gap-2">
         <legend className="mb-1 text-sm font-medium">Answers (select the correct one)</legend>
-        {options.map((o, i) => (
+        {[0, 1, 2, 3].map((i) => (
           <label key={i} className="flex items-center gap-2">
-            <input type="radio" name="correct" checked={correct === i} onChange={() => setCorrect(i)} className="size-4 accent-[var(--color-mint)]" />
-            <Input
-              aria-label={`Answer ${i + 1}`}
-              value={o}
-              maxLength={300}
-              required={i < 2}
-              onChange={(e) => setOptions(options.map((x, j) => (j === i ? e.target.value : x)))}
-              className="h-9"
-              placeholder={i < 2 ? "Required" : "Optional"}
+            <input
+              type="radio"
+              name="correct"
+              checked={correct === i}
+              onChange={() => form.setValue("correct", i, { shouldValidate: form.formState.isSubmitted })}
+              className="size-4 accent-[var(--color-mint)]"
             />
+            <Input aria-label={`Answer ${i + 1}`} maxLength={300} className="h-9" placeholder={i < 2 ? "Required" : "Optional"} {...form.register(`options.${i}`)} />
           </label>
         ))}
-        <FieldError message={tried ? qErrors.options : null} />
+        <FieldError message={optionsError} />
       </fieldset>
       {target.kind === "checkpoint" ? (
-        <Field label="Why it's right (shown after a pass)" htmlFor="q-exp">
-          <Textarea id="q-exp" rows={2} maxLength={1000} value={explanation} onChange={(e) => setExplanation(e.target.value)} />
+        <Field label="Why it's right (shown after a pass)" htmlFor="q-exp" error={form.formState.errors.explanation?.message}>
+          <Textarea id="q-exp" rows={2} maxLength={1000} {...form.register("explanation")} />
         </Field>
       ) : null}
       <div className="flex gap-2">

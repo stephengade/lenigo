@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { GitFork, Loader2, Rocket } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Field, invalid } from "@/components/form-field";
-import { allValid, textError, urlError } from "@/lib/validate";
+import { useZodForm } from "@/components/use-zod-form";
+import { projectSchema } from "@/lib/schemas";
 import { spaceApi, useApiAction } from "@/components/use-api-action";
 import { cn } from "@/lib/utils";
 
@@ -79,39 +79,31 @@ export function StartPlacementButton({ c, s, trackId }: { c: string; s: string; 
 /** Capstone submission form. */
 export function SubmitProjectForm({ c, s, moduleId, resubmit }: { c: string; s: string; moduleId: string; resubmit: boolean }) {
   const { pending, run } = useApiAction();
-  const [repoUrl, setRepo] = useState("");
-  const [liveUrl, setLive] = useState("");
-  const [notes, setNotes] = useState("");
-  const [tried, setTried] = useState(false);
-  const errors = {
-    repo: urlError(repoUrl, { required: true, label: "repository link" }),
-    live: urlError(liveUrl, { label: "live link" }),
-    notes: textError(notes, { label: "your notes", max: 2000 }),
-  };
-  const err = (k: keyof typeof errors) => (tried ? errors[k] : null);
+  const form = useZodForm(projectSchema, { repoUrl: "", liveUrl: "", notes: "" });
+  const err = (k: "repoUrl" | "liveUrl" | "notes") => form.formState.errors[k]?.message;
   return (
     <form
       noValidate
       className="grid gap-3"
-      onSubmit={(e) => {
-        e.preventDefault();
-        setTried(true);
-        if (!allValid(errors)) return;
-        run(() => spaceApi(c, s).modules({ id: moduleId }).submissions.post({ repoUrl, liveUrl: liveUrl || null, notes: notes || null }), {
-          success: "Submitted. A mentor will review it.",
-        });
-      }}
+      onSubmit={form.handleSubmit((v) => run(() => spaceApi(c, s).modules({ id: moduleId }).submissions.post(v), { success: "Submitted. A mentor will review it." }))}
     >
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Code (repository link)" htmlFor="p-repo" error={err("repo")}>
-          <Input id="p-repo" type="url" required placeholder="https://github.com/you/project" value={repoUrl} onChange={(e) => setRepo(e.target.value)} {...invalid("p-repo", err("repo"))} />
+        <Field label="Code (repository link)" htmlFor="p-repo" error={err("repoUrl")}>
+          <Input id="p-repo" type="url" placeholder="https://github.com/you/project" {...form.register("repoUrl")} {...invalid("p-repo", err("repoUrl"))} />
         </Field>
-        <Field label="Live link (optional)" htmlFor="p-live" error={err("live")}>
-          <Input id="p-live" type="url" placeholder="https://your-project.vercel.app" value={liveUrl} onChange={(e) => setLive(e.target.value)} {...invalid("p-live", err("live"))} />
+        <Field label="Live link (optional)" htmlFor="p-live" error={err("liveUrl")}>
+          <Input id="p-live" type="url" placeholder="https://your-project.vercel.app" {...form.register("liveUrl")} {...invalid("p-live", err("liveUrl"))} />
         </Field>
       </div>
       <Field label="Notes for your mentor (optional)" htmlFor="p-notes" error={err("notes")}>
-        <Textarea id="p-notes" rows={3} maxLength={2000} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="What you're proud of, what you'd improve, anything they should test." />
+        <Textarea
+          id="p-notes"
+          rows={3}
+          maxLength={2000}
+          placeholder="What you're proud of, what you'd improve, anything they should test."
+          {...form.register("notes")}
+          {...invalid("p-notes", err("notes"))}
+        />
       </Field>
       <div>
         <Button type="submit" disabled={pending}>

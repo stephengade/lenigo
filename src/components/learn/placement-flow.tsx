@@ -5,7 +5,8 @@ import { Loader2, Timer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, invalid } from "@/components/form-field";
-import { allValid, urlError } from "@/lib/validate";
+import { useZodForm } from "@/components/use-zod-form";
+import { projectSchema } from "@/lib/schemas";
 import { QuestionList } from "@/components/learn/checkpoint-quiz";
 import { spaceApi, useApiAction } from "@/components/use-api-action";
 
@@ -64,27 +65,20 @@ export function PlacementQuiz({
 
 export function PlacementTaskForm({ c, s, attemptId }: { c: string; s: string; attemptId: string }) {
   const { pending, run } = useApiAction();
-  const [repoUrl, setRepo] = useState("");
-  const [liveUrl, setLive] = useState("");
-  const [tried, setTried] = useState(false);
-  const errors = { repo: urlError(repoUrl, { required: true, label: "repository link" }), live: urlError(liveUrl, { label: "live link" }) };
+  const form = useZodForm(projectSchema, { repoUrl: "", liveUrl: "", notes: "" });
+  const err = (k: "repoUrl" | "liveUrl") => form.formState.errors[k]?.message;
   return (
     <form
       noValidate
       className="grid gap-3"
-      onSubmit={(e) => {
-        e.preventDefault();
-        setTried(true);
-        if (!allValid(errors)) return;
-        run(() => spaceApi(c, s).placement({ id: attemptId }).task.post({ repoUrl, liveUrl: liveUrl || null }), { success: "Sent for review" });
-      }}
+      onSubmit={form.handleSubmit((v) => run(() => spaceApi(c, s).placement({ id: attemptId }).task.post({ repoUrl: v.repoUrl, liveUrl: v.liveUrl }), { success: "Sent for review" }))}
     >
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Code (repository link)" htmlFor="pt-repo" error={tried ? errors.repo : null}>
-          <Input id="pt-repo" type="url" required value={repoUrl} onChange={(e) => setRepo(e.target.value)} placeholder="https://github.com/you/placement" {...invalid("pt-repo", tried ? errors.repo : null)} />
+        <Field label="Code (repository link)" htmlFor="pt-repo" error={err("repoUrl")}>
+          <Input id="pt-repo" type="url" placeholder="https://github.com/you/placement" {...form.register("repoUrl")} {...invalid("pt-repo", err("repoUrl"))} />
         </Field>
-        <Field label="Live link (optional)" htmlFor="pt-live" error={tried ? errors.live : null}>
-          <Input id="pt-live" type="url" value={liveUrl} onChange={(e) => setLive(e.target.value)} placeholder="https://your-project.vercel.app" {...invalid("pt-live", tried ? errors.live : null)} />
+        <Field label="Live link (optional)" htmlFor="pt-live" error={err("liveUrl")}>
+          <Input id="pt-live" type="url" placeholder="https://your-project.vercel.app" {...form.register("liveUrl")} {...invalid("pt-live", err("liveUrl"))} />
         </Field>
       </div>
       <div>
