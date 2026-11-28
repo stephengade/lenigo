@@ -16,6 +16,7 @@ import { space as rules } from "@/lib/permissions";
 import { POINT_SOURCES } from "@/lib/points";
 import { nextLeaderboardUpdate } from "@/lib/leaderboard";
 import { cn } from "@/lib/utils";
+import { learnPath } from "@/lib/module-steps";
 
 // The space layout's title template only covers child pages, so this page names the space itself.
 export async function generateMetadata({ params }: { params: Promise<{ community: string; space: string }> }) {
@@ -174,7 +175,7 @@ export default async function SpaceHomePage({ params }: { params: Promise<{ comm
                 </div>
                 <Progress value={active.totals.modules ? (active.totals.complete / active.totals.modules) * 100 : 0} tone="mint" />
                 {activeModule ? (
-                  <Link href={`${base}/modules/${activeModule.id}`} className="flex items-center gap-3 rounded-2xl bg-surface p-3 hover:bg-accent">
+                  <Link href={learnPath(base, active.track.slug, activeModule.slug)} className="flex items-center gap-3 rounded-2xl bg-surface p-3 hover:bg-accent">
                     <span className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground">
                       <Map className="size-4" />
                     </span>

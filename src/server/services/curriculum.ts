@@ -40,6 +40,30 @@ const log = (a: MemberAccess, entityType: string, entityId: string, metadata: Re
     tx ?? db,
   );
 
+/* ── URL slugs ───────────────────────────────────────────────────── */
+
+/**
+ * A slug from the title that isn't taken yet ("-2", "-3"... otherwise). Set once on create and
+ * kept when the title changes, so shared links keep working. "project" is the capstone's page.
+ */
+function freeSlug(title: string, fallback: string, taken: Iterable<string>) {
+  const used = new Set(taken);
+  let base = slugify(title) || fallback;
+  if (base === "project") base = `project-${fallback}`;
+  let slug = base;
+  for (let n = 2; used.has(slug); n++) slug = `${base}-${n}`;
+  return slug;
+}
+
+/** Lessons and quizzes share one URL space inside a module. */
+async function stepSlugsTaken(moduleId: string) {
+  const [r, c] = await Promise.all([
+    db.select({ slug: resources.slug }).from(resources).where(eq(resources.moduleId, moduleId)),
+    db.select({ slug: checkpoints.slug }).from(checkpoints).where(eq(checkpoints.moduleId, moduleId)),
+  ]);
+  return [...r, ...c].map((x) => x.slug);
+}
+
 /* ── Lookups scoped to the space ─────────────────────────────────── */
 
 async function getTrack(a: MemberAccess, id: string) {
@@ -348,10 +372,22 @@ export async function createModule(a: MemberAccess, levelId: string, input: { ti
     const branch = await getBranch(a, input.branchId);
     if (branch.levelId !== level.id) throw fail.badRequest("That option belongs to another level.");
   }
-  const [{ pos }] = await db.select({ pos: max(modules.position) }).from(modules).where(eq(modules.levelId, level.id));
+  const [[{ pos }], taken] = await Promise.all([
+    db.select({ pos: max(modules.position) }).from(modules).where(eq(modules.levelId, level.id)),
+    db.select({ slug: modules.slug }).from(modules).where(eq(modules.trackId, level.trackId)),
+  ]);
   const [row] = await db
     .insert(modules)
-    .values({ levelId: level.id, spaceId: a.space.id, title, summary: input.summary?.trim() || null, branchId: input.branchId ?? null, position: (pos ?? -1) + 1 })
+    .values({
+      levelId: level.id,
+      trackId: level.trackId,
+      spaceId: a.space.id,
+      slug: freeSlug(title, "module", taken.map((t) => t.slug)),
+      title,
+      summary: input.summary?.trim() || null,
+      branchId: input.branchId ?? null,
+      position: (pos ?? -1) + 1,
+    })
     .returning();
   await log(a, "module", row.id, { action: "create", title });
   return row;
@@ -433,7 +469,7 @@ export async function addResource(a: MemberAccess, moduleId: string, input: Reso
   const title = input.title.trim();
   if (title.length < 2) throw fail.badRequest("Give the lesson a title.");
 
-  let values: typeof resources.$inferInsert;
+  let values: Omit<typeof resources.$inferInsert, "slug">;
   if (input.type === "VIDEO") {
     const source = parseVideoSource(input.url);
     if (!source) throw fail.badRequest("Paste a YouTube, Google Drive or https link.");
@@ -469,8 +505,14 @@ export async function addResource(a: MemberAccess, moduleId: string, input: Reso
       estMinutes: input.minutes && input.minutes > 0 ? Math.round(input.minutes) : null,
     };
   }
-  const [{ pos }] = await db.select({ pos: max(resources.position) }).from(resources).where(eq(resources.moduleId, mod.id));
-  const [row] = await db.insert(resources).values({ ...values, position: (pos ?? -1) + 1 }).returning();
+  const [[{ pos }], taken] = await Promise.all([
+    db.select({ pos: max(resources.position) }).from(resources).where(eq(resources.moduleId, mod.id)),
+    stepSlugsTaken(mod.id),
+  ]);
+  const [row] = await db
+    .insert(resources)
+    .values({ ...values, slug: freeSlug(title, "lesson", taken), position: (pos ?? -1) + 1 })
+    .returning();
   await log(a, "resource", row.id, { action: "create", type: row.type, provider: row.provider });
   return row;
 }
@@ -526,10 +568,21 @@ export async function addCheckpoint(a: MemberAccess, moduleId: string, input: { 
   }
   const threshold = Math.round(input.passThreshold ?? 80);
   if (threshold < 50 || threshold > 100) throw fail.badRequest("Pass mark must be between 50% and 100%.");
-  const [{ pos }] = await db.select({ pos: max(checkpoints.position) }).from(checkpoints).where(eq(checkpoints.moduleId, mod.id));
+  const [[{ pos }], taken] = await Promise.all([
+    db.select({ pos: max(checkpoints.position) }).from(checkpoints).where(eq(checkpoints.moduleId, mod.id)),
+    stepSlugsTaken(mod.id),
+  ]);
   const [row] = await db
     .insert(checkpoints)
-    .values({ moduleId: mod.id, spaceId: a.space.id, title, afterResourceId: input.afterResourceId ?? null, passThreshold: threshold, position: (pos ?? -1) + 1 })
+    .values({
+      moduleId: mod.id,
+      spaceId: a.space.id,
+      slug: freeSlug(title, "quiz", taken),
+      title,
+      afterResourceId: input.afterResourceId ?? null,
+      passThreshold: threshold,
+      position: (pos ?? -1) + 1,
+    })
     .returning();
   await log(a, "checkpoint", row.id, { action: "create", title });
   return row;

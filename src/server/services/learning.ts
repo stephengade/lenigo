@@ -35,6 +35,8 @@ import { trackingFor } from "@/lib/video";
 
 export type ModuleNode = {
   id: string;
+  /** URL name within the track: /learn/<track>/<slug>. */
+  slug: string;
   title: string;
   summary: string | null;
   levelId: string;
@@ -67,7 +69,7 @@ export type LevelNode = {
 };
 
 export type TrackProgress = {
-  track: { id: string; title: string; description: string | null; placementTaskMd: string | null };
+  track: { id: string; slug: string; title: string; description: string | null; placementTaskMd: string | null };
   enrollment: TrackEnrollment | null;
   preview: boolean;
   placedInto: LevelTier | null;
@@ -88,7 +90,7 @@ const TRACKABLE = ["YOUTUBE", "GOOGLE_DRIVE"] as const;
 export async function loadTrackProgress(opts: { trackId: string; userId: string; enrollment: TrackEnrollment | null; preview: boolean }): Promise<TrackProgress> {
   const { trackId, userId, enrollment, preview } = opts;
   const [track] = await db
-    .select({ id: tracks.id, title: tracks.title, description: tracks.description, placementTaskMd: tracks.placementTaskMd })
+    .select({ id: tracks.id, slug: tracks.slug, title: tracks.title, description: tracks.description, placementTaskMd: tracks.placementTaskMd })
     .from(tracks)
     .where(eq(tracks.id, trackId))
     .limit(1);
@@ -163,6 +165,7 @@ export async function loadTrackProgress(opts: { trackId: string; userId: string;
       const sub = subs.find((s) => s.moduleId === m.id) ?? null;
       const node: ModuleNode = {
         id: m.id,
+        slug: m.slug,
         title: m.title,
         summary: m.summary,
         levelId: l.id,
@@ -478,6 +481,21 @@ async function openModule(a: MemberAccess, moduleId: string) {
   return { ...row, enrollment, node };
 }
 
+/**
+ * The module id behind a /learn/<track>/<module> URL, looked up inside the caller's space only.
+ * Says nothing about access: getModuleWorkspace decides that (and 404s the same way).
+ */
+export async function moduleIdBySlug(a: MemberAccess, trackSlug: string, moduleSlug: string) {
+  const [row] = await db
+    .select({ id: modules.id })
+    .from(modules)
+    .innerJoin(tracks, eq(tracks.id, modules.trackId))
+    .where(and(eq(tracks.spaceId, a.space.id), eq(tracks.slug, trackSlug), eq(modules.slug, moduleSlug), eq(modules.spaceId, a.space.id)))
+    .limit(1);
+  if (!row) throw fail.notFound("Module not found");
+  return row.id;
+}
+
 export async function getModuleWorkspace(a: MemberAccess, moduleId: string) {
   const [row] = await db
     .select({ module: modules, level: levels, track: tracks })
@@ -497,12 +515,17 @@ export async function getModuleWorkspace(a: MemberAccess, moduleId: string) {
 
   let node: ModuleNode | null = null;
   let lockedBy: string | null = null;
+  /** The module after this one on the learner's path (for "continue" once this one is done). */
+  let next: { id: string; slug: string; title: string } | null = null;
   if (enrollment && live) {
     const progress = await loadTrackProgress({ trackId: row.track.id, userId: a.user.id, enrollment, preview: false });
     const all = progress.levels.flatMap((l) => l.modules);
-    node = all.find((m) => m.id === moduleId) ?? null;
+    const at = all.findIndex((m) => m.id === moduleId);
+    node = all[at] ?? null;
     if (!node) throw fail.forbidden("This module isn't on your path yet.");
     if (node.locked) lockedBy = all.find((m) => !m.complete && !m.placedOut && !m.locked)?.title ?? null;
+    const after = all[at + 1];
+    if (after) next = { id: after.id, slug: after.slug, title: after.title };
   }
 
   const [res, cps, qs] = await Promise.all([
@@ -544,6 +567,7 @@ export async function getModuleWorkspace(a: MemberAccess, moduleId: string) {
     lockedBy,
     placedOut: !!node?.placedOut,
     node,
+    next,
     resources: res.map((r) => {
       const p = prog.find((x) => x.resourceId === r.id);
       return { ...r, watchedPct: p?.watchedPct ?? 0, completed: !!p?.completedAt, lastPositionSeconds: p?.lastPositionSeconds ?? 0 };
@@ -552,6 +576,7 @@ export async function getModuleWorkspace(a: MemberAccess, moduleId: string) {
       const mine = attempts.filter((t) => t.checkpointId === c.id);
       return {
         id: c.id,
+        slug: c.slug,
         title: c.title,
         passThreshold: c.passThreshold,
         afterResourceId: c.afterResourceId,

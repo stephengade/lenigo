@@ -13,6 +13,7 @@ import { placementOffer } from "@/server/services/placement";
 import { LEVEL_LABEL, MODULE_REQUIREMENTS, space as rules } from "@/lib/permissions";
 import { PLACEMENT } from "@/lib/placement";
 import { cn } from "@/lib/utils";
+import { learnPath } from "@/lib/module-steps";
 
 export const metadata = { title: "Roadmap" };
 
@@ -104,6 +105,7 @@ function TrackRoadmap({ c, s, p, offer }: { c: string; s: string; p: TrackProgre
   const current = p.levels.find((l) => l.tier === (p.enrollment?.tier ?? "BEGINNER"));
   const pct = p.totals.modules ? (p.totals.complete / p.totals.modules) * 100 : 0;
   const base = `/c/${c}/${s}`;
+  const active = p.activeModuleId ? (p.levels.flatMap((l) => l.modules).find((m) => m.id === p.activeModuleId) ?? null) : null;
   return (
     <section className="space-y-4">
       <Panel>
@@ -127,8 +129,8 @@ function TrackRoadmap({ c, s, p, offer }: { c: string; s: string; p: TrackProgre
               <Progress value={pct} tone="mint" />
             </div>
           ) : null}
-          {p.activeModuleId ? (
-            <ButtonLink href={`${base}/modules/${p.activeModuleId}`}>
+          {active ? (
+            <ButtonLink href={learnPath(base, p.track.slug, active.slug)}>
               Continue <ArrowRight />
             </ButtonLink>
           ) : null}
@@ -210,7 +212,7 @@ function LevelBlock({ c, s, level, p }: { c: string; s: string; level: LevelNode
             </p>
           ) : (
             <>
-              <ModuleList c={c} s={s} modules={core} />
+              <ModuleList c={c} s={s} trackSlug={p.track.slug} modules={core} />
               {level.branches.length ? (
                 <div className="mt-4 border-t border-border pt-4">
                   <h4 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
@@ -222,7 +224,7 @@ function LevelBlock({ c, s, level, p }: { c: string; s: string; level: LevelNode
                       {chosen && !started ? <p className="mt-2 text-xs text-muted-foreground">You can switch until you start it. After that, ask a mentor.</p> : null}
                     </div>
                   ) : null}
-                  <ModuleList c={c} s={s} modules={branch} branchTitles={p.preview ? level.branches : undefined} />
+                  <ModuleList c={c} s={s} trackSlug={p.track.slug} modules={branch} branchTitles={p.preview ? level.branches : undefined} />
                 </div>
               ) : null}
             </>
@@ -233,7 +235,7 @@ function LevelBlock({ c, s, level, p }: { c: string; s: string; level: LevelNode
   );
 }
 
-function ModuleList({ c, s, modules, branchTitles }: { c: string; s: string; modules: ModuleNode[]; branchTitles?: { id: string; title: string }[] }) {
+function ModuleList({ c, s, trackSlug, modules, branchTitles }: { c: string; s: string; trackSlug: string; modules: ModuleNode[]; branchTitles?: { id: string; title: string }[] }) {
   if (!modules.length) return null;
   return (
     <ol className="grid gap-2">
@@ -273,7 +275,7 @@ function ModuleList({ c, s, modules, branchTitles }: { c: string; s: string; mod
                 {body}
               </div>
             ) : (
-              <Link href={`/c/${c}/${s}/modules/${m.id}`} className="flex items-center gap-3 rounded-xl border border-border p-3 transition-colors hover:bg-surface">
+              <Link href={learnPath(`/c/${c}/${s}`, trackSlug, m.slug)} className="flex items-center gap-3 rounded-xl border border-border p-3 transition-colors hover:bg-surface">
                 {body}
               </Link>
             )}
