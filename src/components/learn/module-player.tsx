@@ -19,7 +19,8 @@ const KIND_LABEL = { lesson: "Lesson", quiz: "Quiz", project: "Project" } as con
 export function ModulePlayer({ ctx, children }: { ctx: StepContext; children: React.ReactNode }) {
   const { w, steps, step, index, base, moduleBase } = ctx;
   const position = steps.filter((st) => st.kind !== "project").length;
-  const label = step.kind === "project" ? "Capstone project" : `${KIND_LABEL[step.kind]} · step ${index + 1} of ${position}`;
+  // The project's heading already says "Capstone project", so its subtitle says where it sits instead.
+  const label = step.kind === "project" ? "Final step · reviewed by a mentor" : `${KIND_LABEL[step.kind]} · step ${index + 1} of ${position}`;
 
   return (
     <div className="space-y-5">
