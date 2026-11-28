@@ -193,6 +193,16 @@ const allA = () => pA.levels.flatMap((l) => l.modules);
 check("module 1 open and active", pA.activeModuleId === m1.id && !allA().find((m) => m.id === m1.id)!.locked);
 check("module 2 locked", allA().find((m) => m.id === m2.id)!.locked);
 check("intermediate hidden from a beginner", !pA.levels.find((l) => l.tier === "INTERMEDIATE")!.reachable && pA.levels.find((l) => l.tier === "INTERMEDIATE")!.modules.length === 0);
+{
+  // The roadmap's expandable rows: each module lists its pages in player order.
+  const n1 = allA().find((m) => m.id === m1.id)!;
+  const ws1 = await learning.getModuleWorkspace(A, m1.id);
+  const { buildModuleSteps } = await import("@/lib/module-steps");
+  const want = buildModuleSteps({ resources: ws1.resources, checkpoints: ws1.checkpoints, submissionStatus: ws1.submissions[0]?.status ?? null, preview: ws1.preview });
+  check("roadmap row lists the module's pages in player order", n1.steps.map((s) => s.path).join() === want.map((s) => s.path).join(), n1.steps.map((s) => s.path).join());
+  check("…ending with the project, nothing done yet", n1.steps.at(-1)?.kind === "project" && n1.steps.every((s) => !s.done || !s.tracked));
+  check("…a locked module still lists its pages (titles only)", allA().find((m) => m.id === m2.id)!.steps.length > 1);
+}
 await refuses("A can't open module 2's checkpoint (no skipping)", async () => {
   const [c] = await db.select().from(S.checkpoints).where(eq(S.checkpoints.moduleId, m2.id));
   return learning.submitCheckpoint(A, c.id, [0]);

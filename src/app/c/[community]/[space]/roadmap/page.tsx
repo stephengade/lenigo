@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowRight, Check, CircleDot, Eye, FastForward, GitFork, Lock, Map, PartyPopper, Rocket } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, CircleDot, ClipboardCheck, Eye, FastForward, GitFork, Hammer, Lock, Map, PartyPopper, PlayCircle, Rocket } from "lucide-react";
 import { EmptyState, PageHeader, Panel } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/button-link";
@@ -148,7 +148,7 @@ function TrackRoadmap({ c, s, p, offer }: { c: string; s: string; p: TrackProgre
 
       {offer?.offered ? <PlacementCard c={c} s={s} trackId={p.track.id} offer={offer} /> : null}
 
-      <ol className="grid gap-4">
+      <ol className="grid grid-cols-1 gap-4">
         {p.levels.map((l) => (
           <LevelBlock key={l.id} c={c} s={s} level={l} p={p} />
         ))}
@@ -212,7 +212,7 @@ function LevelBlock({ c, s, level, p }: { c: string; s: string; level: LevelNode
             </p>
           ) : (
             <>
-              <ModuleList c={c} s={s} trackSlug={p.track.slug} modules={core} />
+              <ModuleList c={c} s={s} trackSlug={p.track.slug} modules={core} activeId={p.activeModuleId} />
               {level.branches.length ? (
                 <div className="mt-4 border-t border-border pt-4">
                   <h4 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
@@ -224,7 +224,7 @@ function LevelBlock({ c, s, level, p }: { c: string; s: string; level: LevelNode
                       {chosen && !started ? <p className="mt-2 text-xs text-muted-foreground">You can switch until you start it. After that, ask a mentor.</p> : null}
                     </div>
                   ) : null}
-                  <ModuleList c={c} s={s} trackSlug={p.track.slug} modules={branch} branchTitles={p.preview ? level.branches : undefined} />
+                  <ModuleList c={c} s={s} trackSlug={p.track.slug} modules={branch} activeId={p.activeModuleId} branchTitles={p.preview ? level.branches : undefined} />
                 </div>
               ) : null}
             </>
@@ -235,50 +235,101 @@ function LevelBlock({ c, s, level, p }: { c: string; s: string; level: LevelNode
   );
 }
 
-function ModuleList({ c, s, trackSlug, modules, branchTitles }: { c: string; s: string; trackSlug: string; modules: ModuleNode[]; branchTitles?: { id: string; title: string }[] }) {
+const STEP_ICON = { lesson: PlayCircle, quiz: ClipboardCheck, project: Hammer } as const;
+
+/**
+ * Each module is an accordion row (native <details>: works without JavaScript and with a keyboard).
+ * Closed, it shows progress; open, it lists the module's pages and links into the player. The
+ * module the learner is on starts open.
+ */
+function ModuleList({
+  c,
+  s,
+  trackSlug,
+  modules,
+  activeId,
+  branchTitles,
+}: {
+  c: string;
+  s: string;
+  trackSlug: string;
+  modules: ModuleNode[];
+  activeId: string | null;
+  branchTitles?: { id: string; title: string }[];
+}) {
   if (!modules.length) return null;
+  const spaceBase = `/c/${c}/${s}`;
   return (
-    <ol className="grid gap-2">
+    <ol className="grid grid-cols-1 gap-2">
       {modules.map((m) => {
         const state = m.complete ? "done" : m.placedOut ? "placed" : m.locked ? "locked" : "open";
-        const body = (
-          <>
-            <span
-              className={cn(
-                "grid size-9 shrink-0 place-items-center rounded-xl",
-                state === "done" && "bg-mint text-white",
-                state === "open" && "bg-primary text-primary-foreground",
-                state === "locked" && "bg-surface text-muted-foreground",
-                state === "placed" && "bg-lilac-soft text-lilac-foreground",
-              )}
-            >
-              {state === "done" ? <Check className="size-4" strokeWidth={3} /> : state === "locked" ? <Lock className="size-4" /> : state === "placed" ? <FastForward className="size-4" /> : <CircleDot className="size-4" />}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate font-medium">{m.title}</span>
-              <span className="block text-xs text-muted-foreground">
-                {state === "placed"
-                  ? "Placed out: open any time, no points"
-                  : `${m.videosDone}/${m.videos} videos · ${m.checkpointsPassed}/${m.checkpoints} checkpoints · ${
-                      m.submission?.status === "APPROVED" ? "project approved" : m.submission?.status === "PENDING" ? "project in review" : m.submission?.status === "NEEDS_REVISION" ? "changes requested" : "project to do"
-                    }`}
-                {branchTitles && m.branchId ? ` · ${branchTitles.find((b) => b.id === m.branchId)?.title}` : ""}
-              </span>
-            </span>
-            {state !== "locked" ? <ArrowRight className="size-4 text-muted-foreground" /> : null}
-          </>
-        );
+        const started = m.steps.some((st) => st.done && st.tracked);
         return (
           <li key={m.id}>
-            {state === "locked" ? (
-              <div className="flex items-center gap-3 rounded-xl border border-border p-3 opacity-70" aria-disabled>
-                {body}
+            <details open={m.id === activeId} className="group rounded-xl border border-border transition-colors open:bg-surface/50">
+              <summary className="flex cursor-pointer list-none items-center gap-3 rounded-xl p-3 transition-colors outline-none hover:bg-surface focus-visible:ring-4 focus-visible:ring-ring/25 [&::-webkit-details-marker]:hidden">
+                <span
+                  className={cn(
+                    "grid size-9 shrink-0 place-items-center rounded-xl",
+                    state === "done" && "bg-mint text-white",
+                    state === "open" && "bg-primary text-primary-foreground",
+                    state === "locked" && "bg-surface text-muted-foreground",
+                    state === "placed" && "bg-lilac-soft text-lilac-foreground",
+                  )}
+                >
+                  {state === "done" ? <Check className="size-4" strokeWidth={3} /> : state === "locked" ? <Lock className="size-4" /> : state === "placed" ? <FastForward className="size-4" /> : <CircleDot className="size-4" />}
+                </span>
+                <span className={cn("min-w-0 flex-1", state === "locked" && "opacity-70")}>
+                  <span className="block font-medium text-pretty">{m.title}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {state === "placed"
+                      ? "Placed out: open any time, no points"
+                      : `${m.videosDone}/${m.videos} videos · ${m.checkpointsPassed}/${m.checkpoints} checkpoints · ${
+                          m.submission?.status === "APPROVED" ? "project approved" : m.submission?.status === "PENDING" ? "project in review" : m.submission?.status === "NEEDS_REVISION" ? "changes requested" : "project to do"
+                        }`}
+                    {branchTitles && m.branchId ? ` · ${branchTitles.find((b) => b.id === m.branchId)?.title}` : ""}
+                  </span>
+                </span>
+                <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden />
+              </summary>
+
+              <div className="space-y-3 border-t border-border px-3 pt-3 pb-3">
+                {m.summary ? <p className="text-sm text-muted-foreground">{m.summary}</p> : null}
+                <ol className="grid grid-cols-1 gap-0.5">
+                  {m.steps.map((st, i) => {
+                    const linkable = state !== "locked" && st.open;
+                    const Icon = !linkable ? Lock : st.done ? Check : STEP_ICON[st.kind];
+                    const row = (
+                      <>
+                        <Icon className={cn("size-4 shrink-0", st.done && linkable ? "text-mint" : "text-muted-foreground")} strokeWidth={st.done && linkable ? 3 : 2} />
+                        <span className="line-clamp-2 min-w-0 flex-1">
+                          {i + 1}. {st.title}
+                        </span>
+                        <span className="shrink-0 text-xs text-muted-foreground">{st.kind === "lesson" ? "Lesson" : st.kind === "quiz" ? "Quiz" : "Project"}</span>
+                      </>
+                    );
+                    return (
+                      <li key={st.id}>
+                        {linkable ? (
+                          <Link href={learnPath(spaceBase, trackSlug, m.slug, st.path)} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-card">
+                            {row}
+                          </Link>
+                        ) : (
+                          <div className="flex items-center gap-2.5 px-2 py-1.5 text-sm text-muted-foreground">{row}</div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
+                {state === "locked" ? (
+                  <p className="text-xs text-muted-foreground">Finish the module before this one to unlock it.</p>
+                ) : (
+                  <ButtonLink href={learnPath(spaceBase, trackSlug, m.slug)} size="sm" variant={state === "done" ? "outline" : "default"}>
+                    {state === "done" ? "Review module" : started ? "Continue" : "Start module"} <ArrowRight />
+                  </ButtonLink>
+                )}
               </div>
-            ) : (
-              <Link href={learnPath(`/c/${c}/${s}`, trackSlug, m.slug)} className="flex items-center gap-3 rounded-xl border border-border p-3 transition-colors hover:bg-surface">
-                {body}
-              </Link>
-            )}
+            </details>
           </li>
         );
       })}

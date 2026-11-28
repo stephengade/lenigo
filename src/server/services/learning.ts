@@ -31,6 +31,7 @@ import { afterResponse, notifyPromoted } from "@/server/services/notifications";
 import { awardPoints } from "@/server/points/rules";
 import { level as levelRules, LEVELS, space as spaceRules } from "@/lib/permissions";
 import { trackingFor } from "@/lib/video";
+import { buildModuleSteps, type ModuleStep } from "@/lib/module-steps";
 
 /* ════════════════════════════ Progress model ════════════════════════════ */
 
@@ -52,6 +53,8 @@ export type ModuleNode = {
   /** Below the level reached through a placement test: open, never gating, earns no points. */
   placedOut: boolean;
   locked: boolean;
+  /** The module's pages in order (lessons, quizzes, project), for the roadmap's expandable rows. */
+  steps: ModuleStep[];
 };
 
 export type LevelNode = {
@@ -117,18 +120,24 @@ export async function loadTrackProgress(opts: { trackId: string; userId: string;
       : Promise.resolve([]),
   ]);
   const moduleIds = mods.map((m) => m.id);
-  const [vids, done, cps, passed, subs] = moduleIds.length
+  const [lessons, done, cps, passed, subs] = moduleIds.length
     ? await Promise.all([
+        // Every published lesson, in module order: the counts use the tracked videos, the steps use all.
         db
-          .select({ id: resources.id, moduleId: resources.moduleId })
+          .select({ id: resources.id, moduleId: resources.moduleId, slug: resources.slug, title: resources.title, type: resources.type, provider: resources.provider })
           .from(resources)
-          .where(and(inArray(resources.moduleId, moduleIds), eq(resources.isPublished, true), eq(resources.type, "VIDEO"), inArray(resources.provider, [...TRACKABLE]))),
+          .where(and(inArray(resources.moduleId, moduleIds), eq(resources.isPublished, true)))
+          .orderBy(asc(resources.position), asc(resources.createdAt)),
         db
           .select({ resourceId: resourceProgress.resourceId })
           .from(resourceProgress)
           .innerJoin(resources, eq(resources.id, resourceProgress.resourceId))
           .where(and(eq(resourceProgress.userId, userId), inArray(resources.moduleId, moduleIds), isNotNull(resourceProgress.completedAt))),
-        db.select({ id: checkpoints.id, moduleId: checkpoints.moduleId }).from(checkpoints).where(inArray(checkpoints.moduleId, moduleIds)),
+        db
+          .select({ id: checkpoints.id, moduleId: checkpoints.moduleId, slug: checkpoints.slug, title: checkpoints.title, afterResourceId: checkpoints.afterResourceId })
+          .from(checkpoints)
+          .where(inArray(checkpoints.moduleId, moduleIds))
+          .orderBy(asc(checkpoints.position), asc(checkpoints.createdAt)),
         db
           .selectDistinct({ checkpointId: quizAttempts.checkpointId })
           .from(quizAttempts)
@@ -161,7 +170,8 @@ export async function loadTrackProgress(opts: { trackId: string; userId: string;
     const path = reachable ? [...core, ...branchMods] : [];
 
     const nodes = path.map((m): ModuleNode => {
-      const mv = vids.filter((v) => v.moduleId === m.id);
+      const ml = lessons.filter((r) => r.moduleId === m.id);
+      const mv = ml.filter((r) => r.type === "VIDEO" && r.provider && (TRACKABLE as readonly string[]).includes(r.provider));
       const mc = cps.filter((c) => c.moduleId === m.id);
       const sub = subs.find((s) => s.moduleId === m.id) ?? null;
       const node: ModuleNode = {
@@ -180,6 +190,12 @@ export async function loadTrackProgress(opts: { trackId: string; userId: string;
         complete: false,
         placedOut: !preview && levelRules.isPlacedOut(l.tier, placedInto),
         locked: !preview && blocked,
+        steps: buildModuleSteps({
+          resources: ml.map((r) => ({ ...r, completed: doneSet.has(r.id) })),
+          checkpoints: mc.map((c) => ({ ...c, passed: passedSet.has(c.id) })),
+          submissionStatus: sub?.status ?? null,
+          preview,
+        }),
       };
       node.complete = node.videosDone >= node.videos && node.checkpointsPassed >= node.checkpoints && sub?.status === "APPROVED";
       if (!node.placedOut) {
