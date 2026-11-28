@@ -31,6 +31,7 @@ import { afterResponse, notifyPromoted } from "@/server/services/notifications";
 import { awardPoints } from "@/server/points/rules";
 import { level as levelRules, LEVELS, space as spaceRules } from "@/lib/permissions";
 import { trackingFor } from "@/lib/video";
+import { buildModuleSteps, type ModuleStep } from "@/lib/module-steps";
 
 /* ════════════════════════════ Progress model ════════════════════════════ */
 
@@ -52,6 +53,8 @@ export type ModuleNode = {
   /** Below the level reached through a placement test: open, never gating, earns no points. */
   placedOut: boolean;
   locked: boolean;
+  /** The module's pages in order (lessons, quizzes, project), for the roadmap's expandable rows. */
+  steps: ModuleStep[];
 };
 
 export type LevelNode = {
@@ -117,18 +120,24 @@ export async function loadTrackProgress(opts: { trackId: string; userId: string;
       : Promise.resolve([]),
   ]);
   const moduleIds = mods.map((m) => m.id);
-  const [vids, done, cps, passed, subs] = moduleIds.length
+  const [lessons, done, cps, passed, subs] = moduleIds.length
     ? await Promise.all([
+        // Every published lesson, in module order: the counts use the tracked videos, the steps use all.
         db
-          .select({ id: resources.id, moduleId: resources.moduleId })
+          .select({ id: resources.id, moduleId: resources.moduleId, slug: resources.slug, title: resources.title, type: resources.type, provider: resources.provider })
           .from(resources)
-          .where(and(inArray(resources.moduleId, moduleIds), eq(resources.isPublished, true), eq(resources.type, "VIDEO"), inArray(resources.provider, [...TRACKABLE]))),
+          .where(and(inArray(resources.moduleId, moduleIds), eq(resources.isPublished, true)))
+          .orderBy(asc(resources.position), asc(resources.createdAt)),
         db
           .select({ resourceId: resourceProgress.resourceId })
           .from(resourceProgress)
           .innerJoin(resources, eq(resources.id, resourceProgress.resourceId))
           .where(and(eq(resourceProgress.userId, userId), inArray(resources.moduleId, moduleIds), isNotNull(resourceProgress.completedAt))),
-        db.select({ id: checkpoints.id, moduleId: checkpoints.moduleId }).from(checkpoints).where(inArray(checkpoints.moduleId, moduleIds)),
+        db
+          .select({ id: checkpoints.id, moduleId: checkpoints.moduleId, slug: checkpoints.slug, title: checkpoints.title, afterResourceId: checkpoints.afterResourceId })
+          .from(checkpoints)
+          .where(inArray(checkpoints.moduleId, moduleIds))
+          .orderBy(asc(checkpoints.position), asc(checkpoints.createdAt)),
         db
           .selectDistinct({ checkpointId: quizAttempts.checkpointId })
           .from(quizAttempts)
@@ -161,7 +170,8 @@ export async function loadTrackProgress(opts: { trackId: string; userId: string;
     const path = reachable ? [...core, ...branchMods] : [];
 
     const nodes = path.map((m): ModuleNode => {
-      const mv = vids.filter((v) => v.moduleId === m.id);
+      const ml = lessons.filter((r) => r.moduleId === m.id);
+      const mv = ml.filter((r) => r.type === "VIDEO" && r.provider && (TRACKABLE as readonly string[]).includes(r.provider));
       const mc = cps.filter((c) => c.moduleId === m.id);
       const sub = subs.find((s) => s.moduleId === m.id) ?? null;
       const node: ModuleNode = {
@@ -180,6 +190,12 @@ export async function loadTrackProgress(opts: { trackId: string; userId: string;
         complete: false,
         placedOut: !preview && levelRules.isPlacedOut(l.tier, placedInto),
         locked: !preview && blocked,
+        steps: buildModuleSteps({
+          resources: ml.map((r) => ({ ...r, completed: doneSet.has(r.id) })),
+          checkpoints: mc.map((c) => ({ ...c, passed: passedSet.has(c.id) })),
+          submissionStatus: sub?.status ?? null,
+          preview,
+        }),
       };
       node.complete = node.videosDone >= node.videos && node.checkpointsPassed >= node.checkpoints && sub?.status === "APPROVED";
       if (!node.placedOut) {
@@ -479,6 +495,20 @@ async function openModule(a: MemberAccess, moduleId: string) {
 }
 
 /**
+ * The same step order the module player shows, enforced on the server: a lesson or quiz only
+ * takes progress once every step before it is done (earlier lessons watched, earlier quizzes passed).
+ */
+function assertStepOpen(node: ModuleNode, stepId: string) {
+  const at = node.steps.findIndex((st) => st.id === stepId);
+  const st = node.steps[at];
+  if (!st) throw fail.notFound("Step not found");
+  if (!st.open) {
+    const blocker = node.steps.slice(0, at).find((x) => !x.done);
+    throw fail.forbidden(blocker?.kind === "quiz" ? `Pass "${blocker.title}" before moving on.` : `Finish "${blocker?.title ?? "the earlier steps"}" first.`);
+  }
+}
+
+/**
  * The module id behind a /learn/<track>/<module> URL, looked up inside the caller's space only.
  * Says nothing about access: getModuleWorkspace decides that (and 404s the same way).
  */
@@ -621,6 +651,7 @@ export async function recordHeartbeat(a: MemberAccess, resourceId: string, input
   const mode = trackingFor(res.provider);
   if (mode === "none") throw fail.badRequest("This lesson opens outside Lenigo and can't be tracked.");
   const open = await openModule(a, res.moduleId);
+  assertStepOpen(open.node, res.id);
   const duration = res.durationSeconds;
   const position = Math.max(0, Math.min(duration, Math.floor(input.position || 0)));
 
@@ -673,6 +704,7 @@ export async function submitCheckpoint(a: MemberAccess, checkpointId: string, an
   const [cp] = await db.select().from(checkpoints).where(and(eq(checkpoints.id, checkpointId), eq(checkpoints.spaceId, a.space.id))).limit(1);
   if (!cp) throw fail.notFound("Checkpoint not found");
   const open = await openModule(a, cp.moduleId);
+  assertStepOpen(open.node, cp.id);
 
   if (cp.afterResourceId) {
     const [r] = await db.select().from(resources).where(eq(resources.id, cp.afterResourceId)).limit(1);
