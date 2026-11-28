@@ -495,6 +495,20 @@ async function openModule(a: MemberAccess, moduleId: string) {
 }
 
 /**
+ * The same step order the module player shows, enforced on the server: a lesson or quiz only
+ * takes progress once every step before it is done (earlier lessons watched, earlier quizzes passed).
+ */
+function assertStepOpen(node: ModuleNode, stepId: string) {
+  const at = node.steps.findIndex((st) => st.id === stepId);
+  const st = node.steps[at];
+  if (!st) throw fail.notFound("Step not found");
+  if (!st.open) {
+    const blocker = node.steps.slice(0, at).find((x) => !x.done);
+    throw fail.forbidden(blocker?.kind === "quiz" ? `Pass "${blocker.title}" before moving on.` : `Finish "${blocker?.title ?? "the earlier steps"}" first.`);
+  }
+}
+
+/**
  * The module id behind a /learn/<track>/<module> URL, looked up inside the caller's space only.
  * Says nothing about access: getModuleWorkspace decides that (and 404s the same way).
  */
@@ -637,6 +651,7 @@ export async function recordHeartbeat(a: MemberAccess, resourceId: string, input
   const mode = trackingFor(res.provider);
   if (mode === "none") throw fail.badRequest("This lesson opens outside Lenigo and can't be tracked.");
   const open = await openModule(a, res.moduleId);
+  assertStepOpen(open.node, res.id);
   const duration = res.durationSeconds;
   const position = Math.max(0, Math.min(duration, Math.floor(input.position || 0)));
 
@@ -689,6 +704,7 @@ export async function submitCheckpoint(a: MemberAccess, checkpointId: string, an
   const [cp] = await db.select().from(checkpoints).where(and(eq(checkpoints.id, checkpointId), eq(checkpoints.spaceId, a.space.id))).limit(1);
   if (!cp) throw fail.notFound("Checkpoint not found");
   const open = await openModule(a, cp.moduleId);
+  assertStepOpen(open.node, cp.id);
 
   if (cp.afterResourceId) {
     const [r] = await db.select().from(resources).where(eq(resources.id, cp.afterResourceId)).limit(1);

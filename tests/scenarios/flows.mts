@@ -405,6 +405,18 @@ const r1 = await ok("A answers wrong", () => learning.submitCheckpoint(A, cp1.id
 check("a miss reveals which, not the answers", !!r1 && !r1.passed && r1.wrong.length === 2 && r1.explanations.length === 0);
 await ok("A misses again", () => learning.submitCheckpoint(A, cp1.id, [0, 0]));
 await refuses("two misses → cooldown", () => learning.submitCheckpoint(A, cp1.id, [1, 0]), /Two misses/);
+{
+  // A lesson after a failed quiz stays closed on the server too, not only in the player.
+  const later = (await ok("add a lesson after the quiz", () => curriculum.addResource(lead, m1.id, { type: "VIDEO", title: "CSS crash course", url: "https://youtu.be/yfoY53QXEnI", minutes: 10 })))!;
+  const laterCp = (await ok("…with its own quiz", () => curriculum.addCheckpoint(lead, m1.id, { title: "CSS basics", afterResourceId: later.id })))!;
+  await ok("…and a question", () => curriculum.addQuestion(lead, laterCp.id, { prompt: "Which property sets text colour?", options: ["color", "font"], correctOptionIndex: 0 }));
+  await refuses("a failed quiz blocks the next lesson's watch time", () => learning.recordHeartbeat(A, later.id, { position: 0, playing: false }), /Pass "HTML basics"/);
+  await refuses("…and the next quiz", () => learning.submitCheckpoint(A, laterCp.id, [0]), /Pass "HTML basics"/);
+  check("…and nothing was recorded for it", (await db.execute(sql`select 1 from resource_progress where resource_id = ${later.id}`)).length === 0);
+  await refuses("B, who hasn't watched lesson one, can't start lesson two", () => learning.recordHeartbeat(B, later.id, { position: 0, playing: false }), /Finish "HTML crash course"/);
+  await ok("remove the extra quiz", () => curriculum.deleteCheckpoint(lead, laterCp.id));
+  await ok("remove the extra lesson", () => curriculum.deleteResource(lead, later.id));
+}
 // Fast-forward the cooldown (attempts are append-only; insert an old passing attempt is NOT allowed — instead move the clock by deleting nothing)
 await db.execute(sql`alter table quiz_attempts disable trigger quiz_attempts_append_only`);
 await db.execute(sql`update quiz_attempts set created_at = now() - interval '11 minutes' where user_id = ${U.a}`);
