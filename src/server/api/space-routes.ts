@@ -32,6 +32,7 @@ const Question = t.Object({
   correctOptionIndex: t.Integer({ minimum: 0, maximum: 5 }),
   explanation: Opt(1000),
 });
+const PlacementQuestion = t.Object({ ...Question.properties, branchId: t.Optional(t.Union([Id, t.Null()])) });
 
 const member = (user: User, params: { community: string; space: string }) => requireSpaceRole(user, params.community, params.space);
 
@@ -135,7 +136,7 @@ export const spaceRoutes = new Elysia()
   .post(`${S}/tracks/:id/placement-questions`, async ({ user, params, body }) => curriculum.addPlacementQuestion(await member(user, params), params.id, body), {
     auth: true,
     params: PId,
-    body: Question,
+    body: PlacementQuestion,
   })
   .delete(`${S}/placement-questions/:id`, async ({ user, params }) => (await curriculum.retirePlacementQuestion(await member(user, params), params.id), { ok: true }), {
     auth: true,
@@ -148,6 +149,7 @@ export const spaceRoutes = new Elysia()
     params: P,
     body: t.Object({
       goalTrackId: Id,
+      stack: t.Optional(t.Union([Text(100, 1), t.Null()])),
       experience: Text(2000, 1),
       links: t.Array(Text(300), { maxItems: 5 }),
       hoursPerWeek: t.Integer({ minimum: 1, maximum: 80, error: "Hours per week must be between 1 and 80." }),

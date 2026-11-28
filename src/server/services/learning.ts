@@ -287,13 +287,79 @@ const httpsList = (links: string[]) =>
       return u;
     });
 
+/* ── Stacks: one pick that holds across every level of a track ─────────── */
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+export type TrackStack = { slug: string; title: string; description: string | null };
+
+/**
+ * A track's stacks: its pick-one options (branches) matched across levels by slug, so
+ * "Python (FastAPI)" in Beginner and in Intermediate is one choice. Only published levels count.
+ */
+export async function trackStacks(trackIds: string[]): Promise<Map<string, TrackStack[]>> {
+  const out = new Map<string, TrackStack[]>();
+  if (!trackIds.length) return out;
+  const rows = await db
+    .select({ trackId: trackBranches.trackId, slug: trackBranches.slug, title: trackBranches.title, description: trackBranches.description, tier: levels.tier, position: trackBranches.position })
+    .from(trackBranches)
+    .innerJoin(levels, eq(levels.id, trackBranches.levelId))
+    .where(and(inArray(trackBranches.trackId, trackIds), eq(levels.isPublished, true)));
+  rows.sort((x, y) => levelRules.rank(x.tier) - levelRules.rank(y.tier) || x.position - y.position);
+  for (const r of rows) {
+    const list = out.get(r.trackId) ?? [];
+    if (!list.some((x) => x.slug === r.slug)) list.push({ slug: r.slug, title: r.title, description: r.description });
+    out.set(r.trackId, list);
+  }
+  return out;
+}
+
+/** Whether the learner has any progress or a submission in a branch (they've "started" it). */
+async function startedBranch(tx: Tx, userId: string, branchId: string) {
+  const [p] = await tx
+    .select({ id: resourceProgress.resourceId })
+    .from(resourceProgress)
+    .innerJoin(resources, eq(resources.id, resourceProgress.resourceId))
+    .innerJoin(modules, eq(modules.id, resources.moduleId))
+    .where(and(eq(resourceProgress.userId, userId), eq(modules.branchId, branchId)))
+    .limit(1);
+  if (p) return true;
+  const [sub] = await tx
+    .select({ id: submissions.id })
+    .from(submissions)
+    .innerJoin(modules, eq(modules.id, submissions.moduleId))
+    .where(and(eq(submissions.userId, userId), eq(modules.branchId, branchId)))
+    .limit(1);
+  return !!sub;
+}
+
+/**
+ * Sets the learner's option to `slug` in every level of the track that offers it. A level
+ * where they've already started a different option keeps it: switching that is a mentor's call.
+ */
+async function applyStack(tx: Tx, e: { id: string; userId: string; trackId: string }, slug: string, chosenById: string, skipLevelId?: string) {
+  const [branches, existing] = await Promise.all([
+    tx.select({ id: trackBranches.id, levelId: trackBranches.levelId }).from(trackBranches).where(and(eq(trackBranches.trackId, e.trackId), eq(trackBranches.slug, slug))),
+    tx.select().from(enrollmentBranches).where(eq(enrollmentBranches.enrollmentId, e.id)),
+  ]);
+  for (const b of branches) {
+    if (b.levelId === skipLevelId) continue;
+    const ex = existing.find((x) => x.levelId === b.levelId);
+    if (ex?.branchId === b.id) continue;
+    if (ex && (await startedBranch(tx, e.userId, ex.branchId))) continue;
+    await tx
+      .insert(enrollmentBranches)
+      .values({ enrollmentId: e.id, levelId: b.levelId, branchId: b.id, userId: e.userId, chosenById })
+      .onConflictDoUpdate({ target: [enrollmentBranches.enrollmentId, enrollmentBranches.levelId], set: { branchId: b.id, chosenById, chosenAt: new Date() } });
+  }
+}
+
 /**
  * Onboarding answers + the learner's FIRST track (their own pick). It never sets a level.
  * Re-submitting updates the answers; it doesn't enrol them in a second track.
  */
 export async function completeOnboarding(
   a: MemberAccess,
-  input: { goalTrackId: string; experience: string; links: string[]; hoursPerWeek: number },
+  input: { goalTrackId: string; stack?: string | null; experience: string; links: string[]; hoursPerWeek: number },
 ) {
   const experience = input.experience.trim();
   if (experience.length < 10) throw fail.badRequest("Tell your mentor a little about what you've done so far.");
@@ -306,6 +372,8 @@ export async function completeOnboarding(
     .limit(1);
   if (!track) throw fail.notFound("Track not found");
   if (!a.spaceMembershipRole) throw fail.forbidden("Join this space as a learner to enrol in a track.");
+  const stacks = (await trackStacks([track.id])).get(track.id) ?? [];
+  const stack = stacks.find((x) => x.slug === input.stack) ?? null;
 
   return db.transaction(async (tx) => {
     const existing = await tx.select({ id: trackEnrollments.id, trackId: trackEnrollments.trackId }).from(trackEnrollments).where(and(eq(trackEnrollments.spaceId, a.space.id), eq(trackEnrollments.userId, a.user.id)));
@@ -314,13 +382,23 @@ export async function completeOnboarding(
       if (track.prerequisiteTrackId) {
         throw fail.badRequest("That track has a prerequisite. Start with the track it builds on; a mentor can add this one later.");
       }
+      if (stacks.length && !stack) throw fail.badRequest(`Pick how you want to learn ${track.title}: ${stacks.map((x) => x.title).join(" or ")}.`);
       const [e] = await tx
         .insert(trackEnrollments)
         .values({ trackId: track.id, spaceId: a.space.id, communityId: a.community.id, userId: a.user.id })
         .returning({ id: trackEnrollments.id });
       enrolled = true;
+      if (stack) await applyStack(tx, { id: e.id, userId: a.user.id, trackId: track.id }, stack.slug, a.user.id);
       await logActivity(
-        { actorUserId: a.user.id, actionType: "TRACK_ENROLLED", communityId: a.community.id, spaceId: a.space.id, entityType: "enrollment", entityId: e.id, metadata: { track: track.title, firstTrack: true } },
+        {
+          actorUserId: a.user.id,
+          actionType: "TRACK_ENROLLED",
+          communityId: a.community.id,
+          spaceId: a.space.id,
+          entityType: "enrollment",
+          entityId: e.id,
+          metadata: { track: track.title, firstTrack: true, ...(stack ? { stack: stack.title } : {}) },
+        },
         tx,
       );
     }
@@ -371,7 +449,11 @@ export async function enrolLearner(a: MemberAccess, input: { userId: string; tra
   });
 }
 
-/** Pick an option ("React + Next.js" or "Vue + Nuxt"). Learners pick for themselves; switching after starting needs a Mentor or Lead (DB trigger). */
+/**
+ * Pick an option ("React" or "Vue"). It holds for the whole track: the same option in the other
+ * levels is set too, except where the learner has started a different one. Learners pick for
+ * themselves; switching after starting needs a Mentor or Lead (DB trigger).
+ */
 export async function chooseBranch(a: MemberAccess, enrollmentId: string, branchId: string) {
   const e = await enrollmentInSpace(a, enrollmentId);
   const self = e.userId === a.user.id;
@@ -385,13 +467,17 @@ export async function chooseBranch(a: MemberAccess, enrollmentId: string, branch
   if (!branch) throw fail.notFound("Option not found in this track");
   if (self && levelRules.rank(branch.tier) > levelRules.rank(e.tier)) throw fail.forbidden("You'll choose this when you reach that level.");
 
-  await db
-    .insert(enrollmentBranches)
-    .values({ enrollmentId: e.id, levelId: branch.branch.levelId, branchId: branch.branch.id, userId: e.userId, chosenById: a.user.id })
-    .onConflictDoUpdate({
-      target: [enrollmentBranches.enrollmentId, enrollmentBranches.levelId],
-      set: { branchId: branch.branch.id, chosenById: a.user.id, chosenAt: new Date() },
-    });
+  await db.transaction(async (tx) => {
+    await tx
+      .insert(enrollmentBranches)
+      .values({ enrollmentId: e.id, levelId: branch.branch.levelId, branchId: branch.branch.id, userId: e.userId, chosenById: a.user.id })
+      .onConflictDoUpdate({
+        target: [enrollmentBranches.enrollmentId, enrollmentBranches.levelId],
+        set: { branchId: branch.branch.id, chosenById: a.user.id, chosenAt: new Date() },
+      });
+    // One stack for the whole track: the same option in the other levels follows this pick.
+    await applyStack(tx, e, branch.branch.slug, a.user.id, branch.branch.levelId);
+  });
   await logActivity({
     actorUserId: a.user.id,
     actionType: "BRANCH_CHOSEN",

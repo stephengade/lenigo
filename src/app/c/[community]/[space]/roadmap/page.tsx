@@ -221,7 +221,7 @@ function LevelBlock({ c, s, level, p }: { c: string; s: string; level: LevelNode
                   {!p.preview && p.enrollment && (!chosen || !started) ? (
                     <div className="mb-3">
                       <BranchPicker c={c} s={s} enrollmentId={p.enrollment.id} branches={level.branches} chosenId={level.chosenBranchId} canSwitch={!started} />
-                      {chosen && !started ? <p className="mt-2 text-xs text-muted-foreground">You can switch until you start it. After that, ask a mentor.</p> : null}
+                      {chosen && !started ? <p className="mt-2 text-xs text-muted-foreground">This option holds for every level. You can switch until you start it. After that, ask a mentor.</p> : null}
                     </div>
                   ) : null}
                   <ModuleList c={c} s={s} trackSlug={p.track.slug} modules={branch} activeId={p.activeModuleId} branchTitles={p.preview ? level.branches : undefined} />

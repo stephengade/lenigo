@@ -491,9 +491,14 @@ export function AddCheckpointForm({ c, s, moduleId, videos }: Scope & { moduleId
 
 const EMPTY_QUESTION = { prompt: "", codeSnippet: "", options: ["", "", "", ""], correct: 0, explanation: "" };
 
-export function QuestionForm({ c, s, target }: Scope & { target: { kind: "checkpoint"; id: string } | { kind: "placement"; trackId: string } }) {
+export function QuestionForm({
+  c,
+  s,
+  target,
+}: Scope & { target: { kind: "checkpoint"; id: string } | { kind: "placement"; trackId: string; options?: { id: string; title: string }[] } }) {
   const { pending, run } = useApiAction();
   const [open, setOpen] = useState(false);
+  const [branchId, setBranchId] = useState("");
   const form = useZodForm(questionSchema, EMPTY_QUESTION);
   const correct = form.watch("correct");
   const promptError = form.formState.errors.prompt?.message;
@@ -510,11 +515,26 @@ export function QuestionForm({ c, s, target }: Scope & { target: { kind: "checkp
       className="grid gap-3 rounded-2xl bg-surface p-4"
       onSubmit={form.handleSubmit((body) =>
         run(
-          () => (target.kind === "checkpoint" ? spaceApi(c, s).checkpoints({ id: target.id }).questions.post(body) : spaceApi(c, s).tracks({ id: target.trackId })["placement-questions"].post(body)),
+          () =>
+            target.kind === "checkpoint"
+              ? spaceApi(c, s).checkpoints({ id: target.id }).questions.post(body)
+              : spaceApi(c, s).tracks({ id: target.trackId })["placement-questions"].post({ ...body, branchId: branchId || null }),
           { success: "Question added", onDone: () => form.reset(EMPTY_QUESTION) },
         ),
       )}
     >
+      {target.kind === "placement" && target.options?.length ? (
+        <Field label="Who gets this question" htmlFor="q-branch" hint="Learners only see questions for everyone plus their own option, so a test never mixes stacks.">
+          <NativeSelect id="q-branch" value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+            <option value="">Everyone on this track</option>
+            {target.options.map((o) => (
+              <option key={o.id} value={o.id}>
+                Only {o.title}
+              </option>
+            ))}
+          </NativeSelect>
+        </Field>
+      ) : null}
       <Field label="Question" htmlFor="q-prompt" error={promptError}>
         <Textarea id="q-prompt" rows={2} maxLength={1000} {...form.register("prompt")} {...invalid("q-prompt", promptError)} />
       </Field>

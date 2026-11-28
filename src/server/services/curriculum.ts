@@ -151,6 +151,8 @@ export async function getTrackEditor(a: MemberAccess, trackId: string) {
     track,
     otherTracks: others,
     placementQuestions: bank,
+    /** The first level's options: a placement question can be for everyone or for one of these. */
+    placementOptions: br.filter((b) => b.levelId === ordered.find((l) => l.tier === "BEGINNER")?.id).map((b) => ({ id: b.id, title: b.title })),
     levels: ordered.map((l) => ({
       ...l,
       branches: br.filter((b) => b.levelId === l.id),
@@ -649,13 +651,23 @@ export async function deleteQuestion(a: MemberAccess, questionId: string) {
 
 /* ── Placement question bank ──────────────────────────────────────── */
 
-export async function addPlacementQuestion(a: MemberAccess, trackId: string, input: QuestionInput) {
+export async function addPlacementQuestion(a: MemberAccess, trackId: string, input: QuestionInput & { branchId?: string | null }) {
   assertEditor(a);
   const track = await getTrack(a, trackId);
   const q = cleanQuestion(input);
+  // The test checks the first level, so a question can only be tied to one of that level's options.
+  if (input.branchId) {
+    const [opt] = await db
+      .select({ id: trackBranches.id })
+      .from(trackBranches)
+      .innerJoin(levels, eq(levels.id, trackBranches.levelId))
+      .where(and(eq(trackBranches.id, input.branchId), eq(trackBranches.trackId, track.id), eq(levels.tier, "BEGINNER")))
+      .limit(1);
+    if (!opt) throw fail.badRequest("Pick one of the first level's options, or leave it for everyone.");
+  }
   const [row] = await db
     .insert(placementQuestions)
-    .values({ trackId: track.id, spaceId: a.space.id, prompt: q.prompt, codeSnippet: q.codeSnippet, options: q.options, correctOptionIndex: q.correctOptionIndex })
+    .values({ trackId: track.id, spaceId: a.space.id, prompt: q.prompt, codeSnippet: q.codeSnippet, options: q.options, correctOptionIndex: q.correctOptionIndex, branchId: input.branchId ?? null })
     .returning({ id: placementQuestions.id });
   return row;
 }

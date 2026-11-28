@@ -25,7 +25,13 @@ export const metadata = { title: "Edit track" };
 export default async function TrackEditorPage({ params }: { params: Promise<{ community: string; space: string; trackId: string }> }) {
   const { community: c, space: s, trackId } = await params;
   const access = await pageSpaceRole(c, s, rules.canEditCurriculum);
-  const { track, levels, otherTracks, placementQuestions } = await guard(() => getTrackEditor(access, trackId));
+  const { track, levels, otherTracks, placementQuestions, placementOptions } = await guard(() => getTrackEditor(access, trackId));
+  // Each learner draws from questions for everyone plus their own option: the smallest of those pools decides.
+  const shared = placementQuestions.filter((q) => !q.branchId).length;
+  const pools = placementOptions.length
+    ? placementOptions.map((o) => ({ title: o.title, n: shared + placementQuestions.filter((q) => q.branchId === o.id).length }))
+    : [{ title: null, n: shared }];
+  const bankReady = pools.every((p) => p.n >= MIN_BANK);
   const base = `/c/${c}/${s}`;
 
   return (
@@ -100,21 +106,29 @@ export default async function TrackEditorPage({ params }: { params: Promise<{ co
           <Section
             title="Placement quiz question bank"
             description={`Each test draws up to ${PLACEMENT.quizQuestions} questions at random (${PLACEMENT.quizMinutes} minutes, pass mark ${PLACEMENT.quizPassPct}%). The test is offered once there are at least ${MIN_BANK} questions and a practical task above.`}
-            actions={<Badge variant={placementQuestions.length >= MIN_BANK && track.placementTaskMd ? "mint" : "muted"}>{placementQuestions.length} questions</Badge>}
+            actions={<Badge variant={bankReady && track.placementTaskMd ? "mint" : "muted"}>{placementQuestions.length} questions</Badge>}
           >
+            {placementOptions.length ? (
+              <p className="mb-3 text-sm text-muted-foreground">
+                Questions per learner: {pools.map((p) => `${p.title} ${p.n}`).join(" · ")}. Each option needs at least {MIN_BANK}.
+              </p>
+            ) : null}
             <ol className="mb-4 grid gap-2">
               {placementQuestions.map((q, i) => (
                 <li key={q.id} className="flex items-start gap-3 rounded-xl bg-surface p-3 text-sm">
                   <span className="font-semibold text-muted-foreground">{i + 1}.</span>
                   <div className="min-w-0 flex-1">
                     <p className="font-medium">{q.prompt}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">Answer: {q.options[q.correctOptionIndex]}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Answer: {q.options[q.correctOptionIndex]}
+                      {q.branchId ? ` · Only ${placementOptions.find((o) => o.id === q.branchId)?.title ?? "one option"}` : ""}
+                    </p>
                   </div>
                   <DeleteButton c={c} s={s} kind="placement-question" id={q.id} label="this question" />
                 </li>
               ))}
             </ol>
-            <QuestionForm c={c} s={s} target={{ kind: "placement", trackId: track.id }} />
+            <QuestionForm c={c} s={s} target={{ kind: "placement", trackId: track.id, options: placementOptions }} />
           </Section>
         </div>
       </Panel>
