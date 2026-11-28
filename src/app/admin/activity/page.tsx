@@ -65,7 +65,7 @@ export default async function AdminActivityPage({ searchParams }: { searchParams
           name="user"
           defaultValue={filters.user ?? ""}
           placeholder="Email, name or GitHub handle"
-          className="h-10 rounded-full border border-input bg-card px-4 text-sm shadow-xs outline-none focus-visible:border-primary focus-visible:ring-4 focus-visible:ring-ring/15"
+          className="h-10 rounded-control border border-input bg-card px-4 text-sm shadow-xs outline-none focus-visible:border-primary focus-visible:ring-4 focus-visible:ring-ring/15"
           aria-label="User"
         />
         <div className="flex gap-2">

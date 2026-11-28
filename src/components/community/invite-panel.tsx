@@ -77,7 +77,7 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
       <form noValidate onSubmit={create} className="rounded-2xl bg-card shadow-card ring-1 ring-foreground/5 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-display text-lg font-bold">Invite people</h2>
-          <div className="inline-flex rounded-full bg-surface p-1 text-sm" role="tablist">
+          <div className="inline-flex rounded-control bg-surface p-1 text-sm" role="tablist">
             {(
               [
                 ["email", Mail, "Email"],
@@ -96,7 +96,7 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
                   form.setValue("expiresInDays", m === "email" ? "14" : "7");
                 }}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-medium whitespace-nowrap transition-colors",
+                  "inline-flex items-center gap-1.5 rounded-[calc(var(--radius-control)-4px)] px-3 py-1 font-medium whitespace-nowrap transition-colors",
                   mode === m ? "bg-ink text-ink-foreground" : "text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -142,7 +142,7 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
             <Label htmlFor="invite-expiry">Expires in</Label>
             <select
               id="invite-expiry"
-              className="h-9 rounded-full border border-input bg-card px-3 text-sm shadow-xs"
+              className="h-9 rounded-control border border-input bg-card px-3 text-sm shadow-xs"
               {...form.register("expiresInDays")}
             >
               {[1, 3, 7, 14, 30, 90].map((d) => (

@@ -71,7 +71,7 @@ export function CreateSpaceDialog({ communitySlug }: { communitySlug: string }) 
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="space-slug">URL</Label>
-            <div className="flex items-center rounded-xl border border-input bg-surface pl-4 font-mono text-xs text-muted-foreground shadow-xs focus-within:border-primary focus-within:ring-4 focus-within:ring-ring/15">
+            <div className="flex items-center rounded-control border border-input bg-surface pl-4 font-mono text-xs text-muted-foreground shadow-xs focus-within:border-primary focus-within:ring-4 focus-within:ring-ring/15">
               <span className="shrink-0">/c/{communitySlug}/</span>
               <input
                 id="space-slug"

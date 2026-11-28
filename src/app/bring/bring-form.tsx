@@ -68,7 +68,7 @@ export function BringForm() {
             <label
               key={s}
               className={cn(
-                "inline-flex h-9 cursor-pointer items-center rounded-full px-4 text-sm font-medium ring-1 transition-colors has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-ring/25",
+                "inline-flex h-9 cursor-pointer items-center rounded-control px-4 text-sm font-medium ring-1 transition-colors has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-ring/25",
                 size === s ? "bg-foreground text-background ring-foreground" : "bg-card text-muted-foreground ring-foreground/10 hover:text-foreground",
               )}
             >

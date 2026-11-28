@@ -40,14 +40,14 @@ export function ScheduleDialog({ c, s }: Scope) {
             <DialogTitle>Schedule a session</DialogTitle>
             <DialogDescription>Workshops teach something. Standup reviews are live sessions where learners present their progress.</DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-1 rounded-full bg-surface p-1 text-sm">
+          <div className="grid grid-cols-2 gap-1 rounded-control bg-surface p-1 text-sm">
             {(
               [
                 ["WORKSHOP", "Workshop"],
                 ["STANDUP_REVIEW", "Standup review"],
               ] as const
             ).map(([v, l]) => (
-              <button key={v} type="button" onClick={() => form.setValue("kind", v)} className={cn("rounded-full px-3 py-1.5 font-medium", kind === v ? "bg-ink text-ink-foreground" : "text-muted-foreground")}>
+              <button key={v} type="button" onClick={() => form.setValue("kind", v)} className={cn("rounded-[calc(var(--radius-control)-4px)] px-3 py-1.5 font-medium", kind === v ? "bg-ink text-ink-foreground" : "text-muted-foreground")}>
                 {l}
               </button>
             ))}

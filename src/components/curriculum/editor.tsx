@@ -404,7 +404,7 @@ export function AddResourceForm({ c, s, moduleId }: Scope & { moduleId: string }
         }),
       )}
     >
-      <div className="flex gap-1 rounded-full bg-surface p-1 text-sm">
+      <div className="flex gap-1 rounded-control bg-surface p-1 text-sm">
         {(
           [
             ["VIDEO", "Video lesson"],
@@ -415,7 +415,7 @@ export function AddResourceForm({ c, s, moduleId }: Scope & { moduleId: string }
             key={v}
             type="button"
             onClick={() => form.setValue("type", v, { shouldValidate: form.formState.isSubmitted })}
-            className={cn("flex-1 rounded-full px-3 py-1.5 font-medium", type === v ? "bg-ink text-ink-foreground" : "text-muted-foreground")}
+            className={cn("flex-1 rounded-[calc(var(--radius-control)-4px)] px-3 py-1.5 font-medium", type === v ? "bg-ink text-ink-foreground" : "text-muted-foreground")}
           >
             {l}
           </button>
