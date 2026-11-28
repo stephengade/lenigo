@@ -72,24 +72,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const admin = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SECRET_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  let link = await admin.auth.admin.generateLink({ type: "magiclink", email });
-  if (link.error) {
-    // New to Lenigo: create the (already confirmed) account, then try again.
-    const created = await admin.auth.admin.createUser({ email, email_confirm: true });
-    if (created.error && !/already/i.test(created.error.message)) {
-      console.error("[invite] couldn't create the invited account", created.error.message);
-      return page("sign_in_failed");
-    }
-    link = await admin.auth.admin.generateLink({ type: "magiclink", email });
+  // Create the (already confirmed) account first. generateLink doesn't fail for an unknown address: it
+  // quietly creates an unconfirmed one and returns a signup token, which a "magiclink" verify rejects.
+  const created = await admin.auth.admin.createUser({ email, email_confirm: true });
+  if (created.error && !/already/i.test(created.error.message)) {
+    console.error("[invite] couldn't create the invited account", created.error.message);
+    return page("sign_in_failed");
   }
+  const link = await admin.auth.admin.generateLink({ type: "magiclink", email });
   const hashed = link.data?.properties?.hashed_token;
   if (link.error || !hashed) {
     console.error("[invite] generateLink failed", link.error?.message);
     return page("sign_in_failed");
   }
+  // Verify with the type Supabase minted ("signup" if an earlier attempt left the account unconfirmed).
+  const minted = link.data.properties.verification_type;
+  const type = minted === "signup" || minted === "invite" ? minted : "magiclink";
 
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.auth.verifyOtp({ token_hash: hashed, type: "magiclink" });
+  const { data, error } = await supabase.auth.verifyOtp({ token_hash: hashed, type });
   if (error || !data.user) {
     console.error("[invite] verifyOtp failed", error?.message);
     return page("sign_in_failed");
