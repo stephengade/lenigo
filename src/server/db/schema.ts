@@ -334,8 +334,15 @@ export const levels = pgTable(
     isPublished: boolean("is_published").notNull().default(false),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex("levels_track_tier_key").on(t.trackId, t.tier)],
+  (t) => [
+    uniqueIndex("levels_track_tier_key").on(t.trackId, t.tier),
+    // Target for the composite FK that keeps a module's track equal to its level's track.
+    unique("levels_id_track_key").on(t.id, t.trackId),
+  ],
 ).enableRLS();
+
+/** URL-safe slug: lowercase words joined by single hyphens. */
+const SLUG_FORMAT = "^[a-z0-9]+(-[a-z0-9]+)*$";
 
 /**
  * A "pick one" inside a level, e.g. Frontend Intermediate → "React + Next.js" or "Vue + Nuxt".
@@ -374,9 +381,15 @@ export const modules = pgTable(
     levelId: uuid("level_id")
       .notNull()
       .references(() => levels.id, { onDelete: "cascade" }),
+    /** The level's track, kept here so a module's slug can be unique within its track (the URL). */
+    trackId: uuid("track_id")
+      .notNull()
+      .references(() => tracks.id, { onDelete: "cascade" }),
     spaceId: uuid("space_id")
       .notNull()
       .references(() => spaces.id, { onDelete: "cascade" }),
+    /** URL name within the track, set from the title when created and kept when renamed so links last. */
+    slug: text("slug").notNull(),
     title: text("title").notNull(),
     summary: text("summary"),
     /**
@@ -393,6 +406,13 @@ export const modules = pgTable(
   },
   (t) => [
     index("modules_level_idx").on(t.levelId, t.position),
+    uniqueIndex("modules_track_slug_key").on(t.trackId, t.slug),
+    check("modules_slug_format", sql`${t.slug} ~ '${sql.raw(SLUG_FORMAT)}'`),
+    foreignKey({
+      columns: [t.levelId, t.trackId],
+      foreignColumns: [levels.id, levels.trackId],
+      name: "modules_level_same_track_fk",
+    }).onDelete("cascade"),
     // A module's branch must belong to the module's own level.
     foreignKey({
       columns: [t.branchId, t.levelId],
@@ -413,6 +433,8 @@ export const resources = pgTable(
       .notNull()
       .references(() => spaces.id, { onDelete: "cascade" }),
     type: resourceType("type").notNull(),
+    /** URL name within the module (a lesson's page). Never "project", which is the capstone's page. */
+    slug: text("slug").notNull(),
     title: text("title").notNull(),
     /** Canonical https URL. For YouTube/Drive it is rebuilt from `providerId`, never stored as pasted. */
     url: text("url").notNull(),
@@ -431,6 +453,8 @@ export const resources = pgTable(
   },
   (t) => [
     index("resources_module_idx").on(t.moduleId, t.position),
+    uniqueIndex("resources_module_slug_key").on(t.moduleId, t.slug),
+    check("resources_slug_format", sql`${t.slug} ~ '${sql.raw(SLUG_FORMAT)}' AND ${t.slug} <> 'project'`),
     check("resources_video_has_source", sql`${t.type} <> 'VIDEO' OR (${t.provider} IS NOT NULL AND ${t.durationSeconds} > 0)`),
     check("resources_youtube_id", sql`${t.provider} IS DISTINCT FROM 'YOUTUBE' OR ${t.providerId} ~ '^[A-Za-z0-9_-]{11}$'`),
     check("resources_drive_id", sql`${t.provider} IS DISTINCT FROM 'GOOGLE_DRIVE' OR ${t.providerId} ~ '^[A-Za-z0-9_-]{20,}$'`),
@@ -480,13 +504,19 @@ export const checkpoints = pgTable(
     spaceId: uuid("space_id")
       .notNull()
       .references(() => spaces.id, { onDelete: "cascade" }),
+    /** URL name within the module, shared with lesson slugs (the app keeps the two apart). Never "project". */
+    slug: text("slug").notNull(),
     title: text("title").notNull(),
     afterResourceId: uuid("after_resource_id").references(() => resources.id, { onDelete: "set null" }),
     passThreshold: smallint("pass_threshold").notNull().default(80),
     position: integer("position").notNull().default(0),
     createdAt: createdAt(),
   },
-  (t) => [index("checkpoints_module_idx").on(t.moduleId, t.position)],
+  (t) => [
+    index("checkpoints_module_idx").on(t.moduleId, t.position),
+    uniqueIndex("checkpoints_module_slug_key").on(t.moduleId, t.slug),
+    check("checkpoints_slug_format", sql`${t.slug} ~ '${sql.raw(SLUG_FORMAT)}' AND ${t.slug} <> 'project'`),
+  ],
 ).enableRLS();
 
 export const quizQuestions = pgTable(

@@ -64,6 +64,13 @@
       "when": 1795546170672,
       "tag": "0008_community_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795858523576,
+      "tag": "0009_curriculum_slugs",
+      "breakpoints": true
     }
   ]
 }

@@ -203,6 +203,41 @@ const wsMentor = (await ok("mentor preview loads", () => learning.getModuleWorks
 check("mentor preview shows keys", wsMentor.preview && wsMentor.checkpoints[0].questions.every((q) => "correctOptionIndex" in q));
 await refuses("an outsider can't open it", () => learning.getModuleWorkspace(as(U.outsider, "MEMBER"), m1.id), /Join this track/);
 
+console.log("\nReadable URLs and step pages");
+const steps = await import("@/lib/module-steps");
+check("module slug from its title", m1.slug === "the-web-html-and-css", m1.slug);
+check("lesson and quiz slugs from their titles", v1.slug === "html-crash-course" && cp1.slug === "html-basics", `${v1.slug} ${cp1.slug}`);
+const fsBeginner = (await curriculum.getTrackEditor(lead, fs.id)).levels[0].id;
+const fsJs = (await ok("same title in another track", () => curriculum.createModule(lead, fsBeginner, { title: "JavaScript basics" })))!;
+check("…keeps the plain slug (slugs are per track)", fsJs.slug === "javascript-basics" && m2.slug === "javascript-basics");
+const dup = (await ok("same title twice in one track", () => curriculum.createModule(lead, lvI.id, { title: "Components and state" })))!;
+check("…gets a numbered slug", dup.slug === "components-and-state-2", dup.slug);
+const projLesson = (await ok("a lesson called Project", () => curriculum.addResource(lead, dup.id, { type: "ARTICLE", title: "Project", url: "https://example.com/p" })))!;
+check("…never takes the capstone's 'project' URL", projLesson.slug === "project-lesson", projLesson.slug);
+const sameName = (await ok("a quiz named like a lesson", () => curriculum.addCheckpoint(lead, dup.id, { title: "Project lesson" })))!;
+check("…gets its own URL in the module", sameName.slug === "project-lesson-2", sameName.slug);
+check("A finds a module by its URL", (await learning.moduleIdBySlug(A, "frontend", m1.slug)) === m1.id);
+await refuses("a URL from another space finds nothing", () => learning.moduleIdBySlug(crossSpace, "frontend", m1.slug), /not found/i);
+await refuses("an unknown URL finds nothing", () => learning.moduleIdBySlug(A, "frontend", "nope"), /not found/i);
+const stA = steps.buildModuleSteps({ resources: ws.resources, checkpoints: ws.checkpoints, submissionStatus: null, preview: false });
+check(
+  "steps: lesson, its quiz, then the project",
+  stA.map((s) => `${s.kind}:${s.path}`).join() === "lesson:html-crash-course,quiz:html-basics,project:project",
+  stA.map((s) => `${s.kind}:${s.path}`).join(),
+);
+check("only the first step is open before anything is done", stA[0].open && !stA[1].open && !stA[2].open);
+check("the module resumes at the first lesson", steps.resumeStep(stA).path === "html-crash-course");
+check("staff preview opens every step", steps.buildModuleSteps({ resources: ws.resources, checkpoints: ws.checkpoints, submissionStatus: null, preview: true }).every((s) => s.open));
+
+console.log("\nCross-site writes");
+const apiRoute = await import("@/app/api/[[...slugs]]/route");
+const evil = await apiRoute.POST(new Request("http://localhost:3000/api/c/gdg-test/web-dev/join", { method: "POST", headers: { origin: "https://evil.example", host: "localhost:3000" } }));
+check("a write from another site is refused (403)", evil.status === 403, String(evil.status));
+const sibling = await apiRoute.POST(new Request("http://localhost:3000/api/c/gdg-test/web-dev/join", { method: "POST", headers: { origin: "https://other.localhost:3000", host: "localhost:3000" } }));
+check("a sibling subdomain is refused too", sibling.status === 403, String(sibling.status));
+const own = await apiRoute.POST(new Request("http://localhost:3000/api/c/gdg-test/web-dev/join", { method: "POST", headers: { origin: "http://localhost:3000", host: "localhost:3000" } }));
+check("the app's own origin passes the guard (on to the session check)", own.status !== 403, String(own.status));
+
 console.log("\nWatch time (server-credited)");
 const back = (s: number) => db.execute(sql`update resource_progress set last_heartbeat_at = now() - make_interval(secs => ${s}) where resource_id = ${v1.id} and user_id = ${U.a}`);
 await ok("first heartbeat is a baseline", () => learning.recordHeartbeat(A, v1.id, { position: 0, playing: false }));
@@ -241,6 +276,12 @@ await db.execute(sql`alter table quiz_attempts enable trigger quiz_attempts_appe
 const r3 = await ok("after the cooldown A passes", () => learning.submitCheckpoint(A, cp1.id, [1, 0]));
 check("a pass returns explanations", !!r3?.passed && r3.explanations[0] === "h1–h6 are headings");
 await refuses("can't retake a passed checkpoint", () => learning.submitCheckpoint(A, cp1.id, [1, 0]), /already passed/);
+{
+  const w = await learning.getModuleWorkspace(A, m1.id);
+  const st = steps.buildModuleSteps({ resources: w.resources, checkpoints: w.checkpoints, submissionStatus: null, preview: false });
+  check("after the video and quiz, the project step opens", st.every((s) => s.open) && st[0].done && st[1].done && !st[2].done);
+  check("…and the module resumes at the project", steps.resumeStep(st).path === "project");
+}
 
 console.log("\nCapstone and review");
 await refuses("B can't submit before finishing the module", () => learning.submitProject(B, m1.id, { repoUrl: "https://github.com/b/x" }), /Watch every lesson/);
