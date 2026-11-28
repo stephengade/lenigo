@@ -26,9 +26,10 @@ export function QuestionList({
   name: string;
 }) {
   return (
-    <ol className="grid gap-4">
+    // min-w-0: grid items won't shrink below their content, so without it a long code line widens the page instead of scrolling.
+    <ol className="grid min-w-0 gap-4">
       {questions.map((q, i) => (
-        <li key={q.id} className={cn("rounded-xl border p-4", wrong?.includes(i) ? "border-rose bg-rose-soft/40" : "border-border")}>
+        <li key={q.id} className={cn("min-w-0 rounded-xl border p-4", wrong?.includes(i) ? "border-rose bg-rose-soft/40" : "border-border")}>
           <p className="text-sm font-medium">
             <span className="text-muted-foreground">{i + 1}. </span>
             {q.prompt}
