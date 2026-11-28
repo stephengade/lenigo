@@ -203,6 +203,17 @@ const wsMentor = (await ok("mentor preview loads", () => learning.getModuleWorks
 check("mentor preview shows keys", wsMentor.preview && wsMentor.checkpoints[0].questions.every((q) => "correctOptionIndex" in q));
 await refuses("an outsider can't open it", () => learning.getModuleWorkspace(as(U.outsider, "MEMBER"), m1.id), /Join this track/);
 
+console.log("\nValidation rules (lib/validate)");
+const V = await import("@/lib/validate");
+for (const [e, ok] of [["ada@gmail.com", true], ["a.b+c@oauife.edu.ng", true], ["ada@gmail", false], ["ada@.com", false], ["ada@gmail..com", false], ["ada.@gmail.com", false], ["ada gmail.com", false], ["", false]] as const)
+  check(`isEmail(${JSON.stringify(e)}) is ${ok}`, V.isEmail(e) === ok);
+check("gmial.com → Did you mean gmail.com?", V.emailError("ada@gmial.com") === "Did you mean ada@gmail.com?");
+for (const [u, ok] of [["https://github.com/a/b", true], ["https://my-app.vercel.app", true], ["http://github.com", false], ["https://github", false], ["https://localhost:3000", false], ["javascript:alert(1)", false], ["https://me:pw@github.com", false], ["https://git hub.com", false]] as const)
+  check(`parseHttpsUrl(${JSON.stringify(u)}) ${ok ? "accepts" : "refuses"}`, !!V.parseHttpsUrl(u) === ok);
+check("blank text doesn't count as filled in", V.textError("          ", { label: "feedback", min: 10 }) === "Add feedback.");
+check("numbers must be whole and in range", V.intError("2.5", { label: "hours", min: 1, max: 80 }) !== null && V.intError("81", { label: "hours", min: 1, max: 80 }) !== null && V.intError("8", { label: "hours", min: 1, max: 80 }) === null);
+await refuses("a blank quiz option is refused (it would shift the answer key)", () => curriculum.addQuestion(lead, cp1.id, { prompt: "Which is right?", options: ["A", "", "C"], correctOptionIndex: 2 }), /every answer option/);
+
 console.log("\nReadable URLs and step pages");
 const steps = await import("@/lib/module-steps");
 check("module slug from its title", m1.slug === "the-web-html-and-css", m1.slug);
@@ -286,6 +297,8 @@ await refuses("can't retake a passed checkpoint", () => learning.submitCheckpoin
 console.log("\nCapstone and review");
 await refuses("B can't submit before finishing the module", () => learning.submitProject(B, m1.id, { repoUrl: "https://github.com/b/x" }), /Watch every lesson/);
 await refuses("repo must be https", () => learning.submitProject(A, m1.id, { repoUrl: "http://github.com/a/x" }), /https/);
+await refuses("repo must have a real domain", () => learning.submitProject(A, m1.id, { repoUrl: "https://github" }), /complete https/);
+await refuses("no user:password@ links", () => learning.submitProject(A, m1.id, { repoUrl: "https://me:pw@github.com/a/x" }), /complete https/);
 const sub = (await ok("A submits the project", () => learning.submitProject(A, m1.id, { repoUrl: "https://github.com/a/profile", liveUrl: "https://a.dev" })))!;
 await refuses("no double submit", () => learning.submitProject(A, m1.id, { repoUrl: "https://github.com/a/profile" }), /waiting for a mentor/);
 await refuses("a learner can't review", () => review.reviewSubmission(B, sub.id, { decision: "APPROVED", score: 100, feedback: "Looks great to me!" }), /permission/);
@@ -739,6 +752,7 @@ await refuses("about must say something", () => R.submitCommunityRequest({ ...go
 await refuses("size must be one of the options", () => R.submitCommunityRequest({ ...goodReq, size: "lots" }, "203.0.113.9"), /Pick a size/);
 await refuses("links must be https", () => R.submitCommunityRequest({ ...goodReq, link: "javascript:alert(1)" }, "203.0.113.9"), /https/);
 await refuses("emails can't carry mailto extras", () => R.submitCommunityRequest({ ...goodReq, email: "a@x.io?bcc=evil@x.io" }, "203.0.113.9"), /email we can reply/);
+await refuses("an email needs a real domain (ada@gmail)", () => R.submitCommunityRequest({ ...goodReq, email: "ada@gmail" }, "203.0.113.9"), /email we can reply/);
 await ok("same email, second request today", () => R.submitCommunityRequest({ ...goodReq, communityName: "GDG Ibadan 2" }, "203.0.113.10"));
 await refuses("third from the same email today is refused", () => R.submitCommunityRequest({ ...goodReq, communityName: "GDG Ibadan 3" }, "203.0.113.11"), /already got/);
 for (let i = 0; i < 3; i++) await R.submitCommunityRequest({ ...goodReq, email: `ip${i}@example.test` }, "198.51.100.1");
@@ -751,6 +765,47 @@ check("open requests listed newest first", listed.rows.length === 8 && listed.co
 await ok("mark one contacted", () => R.setCommunityRequestStatus(root, listed.rows[0].r.id, "CONTACTED"));
 check("status and handler recorded", (await R.listCommunityRequests(root, "CONTACTED")).rows[0]?.handledBy === "P1 root");
 await refuses("a regular user can't change status", () => R.setCommunityRequestStatus(pLead, listed.rows[0].r.id, "DECLINED"), /permission/);
+
+console.log("\nInvite-only sign-in");
+const E = await import("@/server/auth/eligibility");
+const Sess = await import("@/server/auth/session");
+check("an existing account may sign in", await E.canSignIn(users[U.a].email));
+check("…in any letter case", await E.canSignIn(users[U.a].email.toUpperCase()));
+check("a stranger may not", !(await E.canSignIn("stranger@example.test")));
+check("a Super Admin bootstrap address may", await E.canSignIn("root@example.test"));
+const emailInv = (await ok("invite a new person by email", () => I.createSpaceInvite(ownerWeb, "MEMBER", { email: "newbie@example.test", sendEmail: false })))!;
+check("a pending email invite lets that address in", await E.canSignIn("newbie@example.test"));
+check("…but its link doesn't work for another address", !(await E.canSignIn("other@example.test", tokenOf(emailInv.url))));
+const linkInv = (await ok("create a shareable invite link", () => I.createSpaceInvite(ownerWeb, "MEMBER", { maxUses: 2 })))!;
+check("a link invite lets any address in", await E.canSignIn("linkjoiner@example.test", tokenOf(linkInv.url)));
+check("a made-up token lets no one in", !(await E.canSignIn("linkjoiner@example.test", "x".repeat(32))));
+await ok("revoke the email invite", () => I.revokeInvite(pOwner, { communityId: ownerWeb.community.id, spaceId: ownerWeb.space.id }, emailInv.id, () => true));
+check("a revoked invite no longer counts", !(await E.canSignIn("newbie@example.test")));
+const fakeAuth = (email: string) => ({ id: uid(), email, app_metadata: { provider: "email" }, user_metadata: {}, aud: "authenticated", created_at: new Date().toISOString() }) as never;
+await refuses("a new uninvited account isn't created at sign-in", () => Sess.syncUserFromAuth(fakeAuth("sneaky@example.test")), /No Lenigo account or invite/);
+check("…and no user row appears", (await db.select().from(S.users).where(eq(S.users.email, "sneaky@example.test"))).length === 0);
+const joined = await ok("a link invite creates the account at sign-in", () => Sess.syncUserFromAuth(fakeAuth("linkjoiner@example.test"), { invite: tokenOf(linkInv.url) }));
+check("…with a user row", !!joined?.id);
+
+console.log("\nSign-in code rate limits");
+for (let i = 0; i < 5; i++) await E.throttleSignIn("limit@example.test", "192.0.2.50");
+check("6th code for one address in 15 min is refused", /Too many codes/.test((await E.throttleSignIn("limit@example.test", "192.0.2.50")) ?? ""));
+for (let i = 0; i < 20; i++) await E.throttleSignIn(`ip${i}@example.test`, "192.0.2.60");
+check("21st request from one network is refused", /from this network/.test((await E.throttleSignIn("ipx@example.test", "192.0.2.60")) ?? ""));
+for (let i = 0; i < 8; i++) await E.recordMiss("192.0.2.70");
+check("unknown-address guessing is capped per network", await E.missLimited("192.0.2.70"));
+check("…other networks aren't affected", !(await E.missLimited("192.0.2.71")));
+const keys = await db.select({ key: S.signInRequests.key }).from(S.signInRequests).limit(5);
+check("only hashes are stored, never addresses or IPs", keys.every((k) => /^[0-9a-f]{64}$/.test(k.key)));
+
+console.log("\nSign-in code route (/auth/otp)");
+const otpRoute = await import("@/app/auth/otp/route");
+const otp = (body: unknown, origin = "http://localhost:3000", ip = "192.0.2.80") =>
+  otpRoute.POST(new NextRequest("http://localhost:3000/auth/otp", { method: "POST", headers: { origin, "content-type": "application/json", "x-real-ip": ip }, body: JSON.stringify(body) }));
+check("another site can't trigger codes (403)", (await otp({ email: users[U.a].email }, "https://evil.example")).status === 403);
+check("ada@gmail is refused before anything is sent (400)", (await otp({ email: "ada@gmail" })).status === 400);
+const unknown = await otp({ email: "nobody@example.test" });
+check("an unknown address is told plainly (404)", unknown.status === 404 && /don't have an account/.test(((await unknown.json()) as { error: string }).error));
 
 console.log(`\n${pass} passed, ${failCount} failed`);
 if (failures.length) console.log("FAILURES:\n- " + failures.join("\n- "));

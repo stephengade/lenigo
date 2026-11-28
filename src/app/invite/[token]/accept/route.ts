@@ -6,6 +6,7 @@ import { communities, invites, users } from "@/server/db/schema";
 import { env } from "@/server/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSessionUser, syncUserFromAuth } from "@/server/auth/session";
+import { NotInvitedError } from "@/server/auth/eligibility";
 import { hashToken, ONE_CLICK_TTL_MS, redeemInvite } from "@/server/services/invites";
 
 /**
@@ -93,7 +94,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     console.error("[invite] verifyOtp failed", error?.message);
     return page("sign_in_failed");
   }
-  const row = await syncUserFromAuth(data.user, { logLogin: true });
+  // This invite is for this address, so the new account is allowed (canSignIn sees the pending invite).
+  let row;
+  try {
+    row = await syncUserFromAuth(data.user, { logLogin: true, invite: token });
+  } catch (e) {
+    if (!(e instanceof NotInvitedError)) throw e;
+    await supabase.auth.signOut();
+    return page("sign_in_failed");
+  }
   if (row.deactivatedAt) {
     await supabase.auth.signOut();
     return page("deactivated");

@@ -6,6 +6,8 @@
  * Curators paste a link; the server keeps only a validated id for YouTube/Drive and always
  * rebuilds watch/embed URLs from it, never from what was pasted.
  */
+import { parseHttpsUrl } from "@/lib/validate";
+
 export type VideoProvider = "YOUTUBE" | "GOOGLE_DRIVE" | "EXTERNAL";
 export type VideoSource = { provider: VideoProvider; providerId: string | null; url: string };
 
@@ -53,9 +55,8 @@ export function parseVideoSource(input: string): VideoSource | null {
   if (yt) return { provider: "YOUTUBE", providerId: yt, url: youTubeWatchUrl(yt) };
   const drive = parseDriveId(input);
   if (drive) return { provider: "GOOGLE_DRIVE", providerId: drive, url: `https://drive.google.com/file/d/${drive}/view` };
-  const url = toUrl(input);
-  if (!url || url.protocol !== "https:") return null;
-  return { provider: "EXTERNAL", providerId: null, url: url.toString() };
+  const url = parseHttpsUrl(input);
+  return url ? { provider: "EXTERNAL", providerId: null, url } : null;
 }
 
 export const youTubeWatchUrl = (id: string) => `https://www.youtube.com/watch?v=${id}`;
@@ -81,6 +82,5 @@ export function trackingFor(provider: VideoProvider): "player" | "time-on-page" 
 
 /** "Learn more" articles: external https links only (no javascript:, data:, http:). */
 export function parseArticleUrl(input: string): string | null {
-  const url = toUrl(input);
-  return url && url.protocol === "https:" ? url.toString() : null;
+  return parseHttpsUrl(input);
 }

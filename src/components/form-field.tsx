@@ -1,17 +1,52 @@
 import { cn } from "@/lib/utils";
 
-/** Label + control + hint, stacked. */
-export function Field({ label, hint, htmlFor, className, children }: { label: React.ReactNode; hint?: React.ReactNode; htmlFor?: string; className?: string; children: React.ReactNode }) {
+/**
+ * Label + control + hint, stacked. Pass `error` to show what's wrong under the control (it replaces
+ * the hint); give the control `aria-invalid` and `aria-describedby={errorId(htmlFor)}` so screen
+ * readers announce it too.
+ */
+export function Field({
+  label,
+  hint,
+  error,
+  htmlFor,
+  className,
+  children,
+}: {
+  label: React.ReactNode;
+  hint?: React.ReactNode;
+  error?: string | null;
+  htmlFor?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className={cn("space-y-1.5", className)}>
       <label htmlFor={htmlFor} className="block text-sm font-medium">
         {label}
       </label>
       {children}
-      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
+      {error ? <FieldError id={htmlFor ? errorId(htmlFor) : undefined} message={error} /> : hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }
+
+/** The id a control points aria-describedby at for its error message. */
+export const errorId = (controlId: string) => `${controlId}-error`;
+
+/** A field's error message, for controls that aren't wrapped in a Field. */
+export function FieldError({ id, message }: { id?: string; message: string | null | undefined }) {
+  if (!message) return null;
+  return (
+    <p id={id} role="alert" className="text-xs font-medium text-destructive">
+      {message}
+    </p>
+  );
+}
+
+/** Props that mark a control invalid and link it to its error message. */
+export const invalid = (controlId: string, error: string | null | undefined) =>
+  error ? ({ "aria-invalid": true, "aria-describedby": errorId(controlId) } as const) : {};
 
 /** A native <select> in the input style: reliable in forms and on phones. */
 export function NativeSelect({ className, ...props }: React.ComponentProps<"select">) {

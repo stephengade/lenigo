@@ -11,6 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { ButtonLink } from "@/components/button-link";
 import { api, apiError } from "@/lib/api";
 import { slugify } from "@/lib/utils";
+import { FieldError, invalid } from "@/components/form-field";
+import { allValid, emailError, textError } from "@/lib/validate";
 
 const SUGGESTIONS = ["Web Development", "Data Science", "Mobile Development", "Cloud & DevOps", "UI/UX Design", "AI & ML"];
 
@@ -30,6 +32,17 @@ export function ProvisionForm({ initial }: { initial?: { name?: string; ownerEma
   const [result, setResult] = useState<Result | null>(null);
   const [copied, setCopied] = useState(false);
   const effectiveSlug = slugTouched ? slug : slugify(name);
+  const [tried, setTried] = useState(false);
+  const errors = {
+    name: textError(name, { label: "the community's name", min: 2, max: 80 }),
+    slug: !effectiveSlug
+      ? "Add a URL slug."
+      : /^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/.test(effectiveSlug)
+        ? null
+        : "Use lowercase letters, numbers and single hyphens (not at the start or end).",
+    ownerEmail: emailError(ownerEmail),
+  };
+  const err = (k: keyof typeof errors) => (tried ? errors[k] : null);
 
   function addSpace(value: string) {
     const v = value.trim();
@@ -40,6 +53,8 @@ export function ProvisionForm({ initial }: { initial?: { name?: string; ownerEma
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    setTried(true);
+    if (!allValid(errors)) return;
     const pendingSpaces = draft.trim() ? [...spaces, draft.trim()] : spaces;
     start(async () => {
       const { data, error } = await api.admin.communities.post({
@@ -118,13 +133,14 @@ export function ProvisionForm({ initial }: { initial?: { name?: string; ownerEma
   }
 
   return (
-    <form onSubmit={submit} className="space-y-8">
+    <form noValidate onSubmit={submit} className="space-y-8">
       <section className="space-y-5 rounded-2xl bg-card shadow-card ring-1 ring-foreground/5 p-6">
         <h2 className="font-display text-lg font-bold">Community</h2>
         <div className="grid gap-5 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="name">Community name</Label>
-            <Input id="name" required minLength={2} maxLength={80} placeholder="GDG OAU" value={name} onChange={(e) => setName(e.target.value)} />
+            <Input id="name" required minLength={2} maxLength={80} placeholder="GDG OAU" value={name} onChange={(e) => setName(e.target.value)} {...invalid("name", err("name"))} />
+            <FieldError id="name-error" message={err("name")} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="slug">URL slug</Label>
@@ -142,8 +158,10 @@ export function ProvisionForm({ initial }: { initial?: { name?: string; ownerEma
                   setSlugTouched(true);
                   setSlug(e.target.value.toLowerCase());
                 }}
+                {...invalid("slug", err("slug"))}
               />
             </div>
+            <FieldError id="slug-error" message={err("slug")} />
           </div>
         </div>
         <div className="space-y-1.5">
@@ -223,12 +241,13 @@ export function ProvisionForm({ initial }: { initial?: { name?: string; ownerEma
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="owner">Community Lead email</Label>
-          <Input id="owner" type="email" required placeholder="lead@gdg-oau.dev" value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} />
+          <Input id="owner" type="email" required placeholder="lead@gdg-oau.dev" value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} {...invalid("owner", err("ownerEmail"))} />
+          <FieldError id="owner-error" message={err("ownerEmail")} />
         </div>
       </section>
 
       <div className="flex justify-end">
-        <Button type="submit" size="lg" className="h-11 px-5" disabled={pending || !name || !effectiveSlug || !ownerEmail}>
+        <Button type="submit" size="lg" className="h-11 px-5" disabled={pending}>
           {pending ? <Loader2 className="animate-spin" /> : null} Provision community
         </Button>
       </div>

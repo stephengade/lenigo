@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Field, NativeSelect } from "@/components/form-field";
+import { Field, FieldError, invalid, NativeSelect } from "@/components/form-field";
+import { allValid, textError, urlError } from "@/lib/validate";
+import { parseDriveId, parseYouTubeId } from "@/lib/video";
 import { spaceApi, useApiAction } from "@/components/use-api-action";
 import { LEVEL_LABEL, LEVELS, type LevelTier } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
@@ -369,11 +371,28 @@ export function AddResourceForm({ c, s, moduleId }: Scope & { moduleId: string }
   const [title, setTitle] = useState("");
   const [sourceName, setSourceName] = useState("");
   const [minutes, setMinutes] = useState("");
+  const [tried, setTried] = useState(false);
+  const mins = Number(minutes);
+  const errors = {
+    // A YouTube or Drive id is enough for a video; anything else must be a complete https link.
+    url: type === "VIDEO" && (parseYouTubeId(url) || parseDriveId(url)) ? null : urlError(url, { required: true, label: "link" }),
+    title: textError(title, { label: "a title", min: 2, max: 160 }),
+    minutes:
+      type === "VIDEO" && !minutes.trim()
+        ? "Enter the video's length in minutes."
+        : minutes.trim() && (!Number.isFinite(mins) || mins <= 0 || mins > 600)
+          ? "Enter a length between 0.5 and 600 minutes."
+          : null,
+  };
+  const err = (k: keyof typeof errors) => (tried ? errors[k] : null);
   return (
     <form
+      noValidate
       className="grid gap-3 rounded-2xl border border-dashed border-border p-4"
       onSubmit={(e) => {
         e.preventDefault();
+        setTried(true);
+        if (!allValid(errors)) return;
         run(
           () => spaceApi(c, s).modules({ id: moduleId }).resources.post({ type, url, title, sourceName: sourceName || null, minutes: minutes ? Number(minutes) : null }),
           {
@@ -383,6 +402,7 @@ export function AddResourceForm({ c, s, moduleId }: Scope & { moduleId: string }
               setTitle("");
               setSourceName("");
               setMinutes("");
+              setTried(false);
             },
           },
         );
@@ -404,18 +424,19 @@ export function AddResourceForm({ c, s, moduleId }: Scope & { moduleId: string }
         label="Link"
         htmlFor="r-url"
         hint={type === "VIDEO" ? "YouTube works best (watch time is tracked). Google Drive and other https links work too." : "An https article, docs page or guide. Optional reading."}
+        error={err("url")}
       >
-        <Input id="r-url" required value={url} onChange={(e) => setUrl(e.target.value)} placeholder={type === "VIDEO" ? "https://www.youtube.com/watch?v=…" : "https://developer.mozilla.org/…"} />
+        <Input id="r-url" required value={url} onChange={(e) => setUrl(e.target.value)} {...invalid("r-url", err("url"))} placeholder={type === "VIDEO" ? "https://www.youtube.com/watch?v=…" : "https://developer.mozilla.org/…"} />
       </Field>
       <div className="grid gap-3 sm:grid-cols-[1fr_10rem_8rem]">
-        <Field label="Title" htmlFor="r-title">
-          <Input id="r-title" required minLength={2} maxLength={160} value={title} onChange={(e) => setTitle(e.target.value)} />
+        <Field label="Title" htmlFor="r-title" error={err("title")}>
+          <Input id="r-title" required minLength={2} maxLength={160} value={title} onChange={(e) => setTitle(e.target.value)} {...invalid("r-title", err("title"))} />
         </Field>
         <Field label="Creator" htmlFor="r-src">
           <Input id="r-src" maxLength={80} value={sourceName} onChange={(e) => setSourceName(e.target.value)} placeholder="Channel or site" />
         </Field>
-        <Field label={type === "VIDEO" ? "Length (min)" : "Read (min)"} htmlFor="r-min">
-          <Input id="r-min" type="number" min={0} max={600} step="0.5" value={minutes} required={type === "VIDEO"} onChange={(e) => setMinutes(e.target.value)} />
+        <Field label={type === "VIDEO" ? "Length (min)" : "Read (min)"} htmlFor="r-min" error={err("minutes")}>
+          <Input id="r-min" type="number" min={0} max={600} step="0.5" value={minutes} required={type === "VIDEO"} onChange={(e) => setMinutes(e.target.value)} {...invalid("r-min", err("minutes"))} />
         </Field>
       </div>
       <div>
@@ -476,6 +497,19 @@ export function QuestionForm({ c, s, target }: Scope & { target: { kind: "checkp
   const [options, setOptions] = useState(["", "", "", ""]);
   const [correct, setCorrect] = useState(0);
   const [explanation, setExplanation] = useState("");
+  const [tried, setTried] = useState(false);
+  const kept = options.map((o) => o.trim()).filter(Boolean);
+  const qErrors = {
+    prompt: textError(prompt, { label: "the question", min: 3, max: 1000 }),
+    options:
+      kept.length < 2
+        ? "Fill in at least two answers."
+        : new Set(kept.map((o) => o.toLowerCase())).size !== kept.length
+          ? "Each answer must be different."
+          : !options[correct]?.trim()
+            ? "The answer marked correct is empty. Pick a filled-in one."
+            : null,
+  };
   if (!open)
     return (
       <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
@@ -488,12 +522,16 @@ export function QuestionForm({ c, s, target }: Scope & { target: { kind: "checkp
     setOptions(["", "", "", ""]);
     setCorrect(0);
     setExplanation("");
+    setTried(false);
   };
   return (
     <form
+      noValidate
       className="grid gap-3 rounded-2xl bg-surface p-4"
       onSubmit={(e) => {
         e.preventDefault();
+        setTried(true);
+        if (!allValid(qErrors)) return;
         const filled = options.map((o) => o.trim());
         const kept = filled.filter(Boolean);
         const correctIndex = kept.indexOf(filled[correct]);
@@ -504,8 +542,8 @@ export function QuestionForm({ c, s, target }: Scope & { target: { kind: "checkp
         );
       }}
     >
-      <Field label="Question" htmlFor="q-prompt">
-        <Textarea id="q-prompt" rows={2} required maxLength={1000} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+      <Field label="Question" htmlFor="q-prompt" error={tried ? qErrors.prompt : null}>
+        <Textarea id="q-prompt" rows={2} required maxLength={1000} value={prompt} onChange={(e) => setPrompt(e.target.value)} {...invalid("q-prompt", tried ? qErrors.prompt : null)} />
       </Field>
       <Field label="Code (optional)" htmlFor="q-code">
         <Textarea id="q-code" rows={3} maxLength={4000} value={code} onChange={(e) => setCode(e.target.value)} className="font-mono text-xs" />
@@ -526,6 +564,7 @@ export function QuestionForm({ c, s, target }: Scope & { target: { kind: "checkp
             />
           </label>
         ))}
+        <FieldError message={tried ? qErrors.options : null} />
       </fieldset>
       {target.kind === "checkpoint" ? (
         <Field label="Why it's right (shown after a pass)" htmlFor="q-exp">
@@ -533,7 +572,7 @@ export function QuestionForm({ c, s, target }: Scope & { target: { kind: "checkp
         </Field>
       ) : null}
       <div className="flex gap-2">
-        <Button type="submit" size="sm" disabled={pending || !options[correct]?.trim()}>
+        <Button type="submit" size="sm" disabled={pending}>
           {pending ? <Loader2 className="animate-spin" /> : null} Save question
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>

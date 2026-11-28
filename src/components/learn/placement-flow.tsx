@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { Loader2, Timer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Field } from "@/components/form-field";
+import { Field, invalid } from "@/components/form-field";
+import { allValid, urlError } from "@/lib/validate";
 import { QuestionList } from "@/components/learn/checkpoint-quiz";
 import { spaceApi, useApiAction } from "@/components/use-api-action";
 
@@ -65,20 +66,25 @@ export function PlacementTaskForm({ c, s, attemptId }: { c: string; s: string; a
   const { pending, run } = useApiAction();
   const [repoUrl, setRepo] = useState("");
   const [liveUrl, setLive] = useState("");
+  const [tried, setTried] = useState(false);
+  const errors = { repo: urlError(repoUrl, { required: true, label: "repository link" }), live: urlError(liveUrl, { label: "live link" }) };
   return (
     <form
+      noValidate
       className="grid gap-3"
       onSubmit={(e) => {
         e.preventDefault();
+        setTried(true);
+        if (!allValid(errors)) return;
         run(() => spaceApi(c, s).placement({ id: attemptId }).task.post({ repoUrl, liveUrl: liveUrl || null }), { success: "Sent for review" });
       }}
     >
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Code (repository link)" htmlFor="pt-repo">
-          <Input id="pt-repo" type="url" required value={repoUrl} onChange={(e) => setRepo(e.target.value)} placeholder="https://github.com/you/placement" />
+        <Field label="Code (repository link)" htmlFor="pt-repo" error={tried ? errors.repo : null}>
+          <Input id="pt-repo" type="url" required value={repoUrl} onChange={(e) => setRepo(e.target.value)} placeholder="https://github.com/you/placement" {...invalid("pt-repo", tried ? errors.repo : null)} />
         </Field>
-        <Field label="Live link (optional)" htmlFor="pt-live">
-          <Input id="pt-live" type="url" value={liveUrl} onChange={(e) => setLive(e.target.value)} />
+        <Field label="Live link (optional)" htmlFor="pt-live" error={tried ? errors.live : null}>
+          <Input id="pt-live" type="url" value={liveUrl} onChange={(e) => setLive(e.target.value)} placeholder="https://your-project.vercel.app" {...invalid("pt-live", tried ? errors.live : null)} />
         </Field>
       </div>
       <div>

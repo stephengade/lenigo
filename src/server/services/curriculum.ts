@@ -606,8 +606,10 @@ export type QuestionInput = { prompt: string; codeSnippet?: string | null; optio
 
 function cleanQuestion(input: QuestionInput) {
   const prompt = input.prompt.trim();
-  const options = input.options.map((o) => o.trim()).filter(Boolean);
+  // Blank options are refused, not dropped: dropping one would shift which option correctOptionIndex points at.
+  const options = input.options.map((o) => o.trim());
   if (prompt.length < 3) throw fail.badRequest("Write the question.");
+  if (options.some((o) => !o)) throw fail.badRequest("Fill in every answer option, or remove the empty ones.");
   if (options.length < 2 || options.length > 6) throw fail.badRequest("Give between 2 and 6 answer options.");
   if (new Set(options).size !== options.length) throw fail.badRequest("Answer options must be different.");
   if (!Number.isInteger(input.correctOptionIndex) || input.correctOptionIndex < 0 || input.correctOptionIndex >= options.length)

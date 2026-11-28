@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Field } from "@/components/form-field";
+import { Field, invalid } from "@/components/form-field";
+import { allValid, textError } from "@/lib/validate";
 import { useApiAction } from "@/components/use-api-action";
 import { api } from "@/lib/api";
 
@@ -23,6 +24,17 @@ export function EditProfileDialog({
   const [username, setUsername] = useState(profile.username);
   const [bio, setBio] = useState(profile.bio ?? "");
   const [emails, setEmails] = useState(profile.emailNotifications);
+  const [tried, setTried] = useState(false);
+  const errors = {
+    name: textError(name, { label: "your name", min: 2, max: 60 }),
+    username: !username.trim()
+      ? "Pick a username."
+      : /^[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$/.test(username) && !username.includes("--")
+        ? null
+        : "3–30 lowercase letters, numbers and hyphens, not starting or ending with a hyphen.",
+    bio: textError(bio, { label: "your bio", max: 280 }),
+  };
+  const err = (k: keyof typeof errors) => (tried ? errors[k] : null);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button variant="outline" size="sm" />}>
@@ -30,9 +42,12 @@ export function EditProfileDialog({
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <form
+          noValidate
           className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
+            setTried(true);
+            if (!allValid(errors)) return;
             run(() => api.me.patch({ name, username, bio: bio || null, emailNotifications: emails }), {
               success: "Profile saved",
               refresh: false,
@@ -48,13 +63,13 @@ export function EditProfileDialog({
             <DialogTitle>Your public profile</DialogTitle>
             <DialogDescription>Anyone with the link can see this page: your name, bio, levels and approved projects. Never your email or points.</DialogDescription>
           </DialogHeader>
-          <Field label="Name" htmlFor="pf-name">
-            <Input id="pf-name" required minLength={2} maxLength={60} value={name} onChange={(e) => setName(e.target.value)} />
+          <Field label="Name" htmlFor="pf-name" error={err("name")}>
+            <Input id="pf-name" required minLength={2} maxLength={60} value={name} onChange={(e) => setName(e.target.value)} {...invalid("pf-name", err("name"))} />
           </Field>
-          <Field label="Username" htmlFor="pf-user" hint="lenigo/u/your-name. Lowercase letters, numbers and hyphens.">
-            <Input id="pf-user" required minLength={3} maxLength={30} pattern="[a-z0-9][a-z0-9-]{1,28}[a-z0-9]" value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())} />
+          <Field label="Username" htmlFor="pf-user" hint="lenigo/u/your-name. Lowercase letters, numbers and hyphens." error={err("username")}>
+            <Input id="pf-user" required minLength={3} maxLength={30} pattern="[a-z0-9][a-z0-9-]{1,28}[a-z0-9]" value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())} {...invalid("pf-user", err("username"))} />
           </Field>
-          <Field label="Bio" htmlFor="pf-bio">
+          <Field label="Bio" htmlFor="pf-bio" error={err("bio")}>
             <Textarea id="pf-bio" rows={3} maxLength={280} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="What you're learning and building." />
           </Field>
           <label htmlFor="pf-emails" className="flex cursor-pointer items-start gap-3 rounded-xl bg-surface p-3.5">

@@ -6,7 +6,8 @@ import { GitFork, Loader2, Rocket } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Field } from "@/components/form-field";
+import { Field, invalid } from "@/components/form-field";
+import { allValid, textError, urlError } from "@/lib/validate";
 import { spaceApi, useApiAction } from "@/components/use-api-action";
 import { cn } from "@/lib/utils";
 
@@ -81,25 +82,35 @@ export function SubmitProjectForm({ c, s, moduleId, resubmit }: { c: string; s: 
   const [repoUrl, setRepo] = useState("");
   const [liveUrl, setLive] = useState("");
   const [notes, setNotes] = useState("");
+  const [tried, setTried] = useState(false);
+  const errors = {
+    repo: urlError(repoUrl, { required: true, label: "repository link" }),
+    live: urlError(liveUrl, { label: "live link" }),
+    notes: textError(notes, { label: "your notes", max: 2000 }),
+  };
+  const err = (k: keyof typeof errors) => (tried ? errors[k] : null);
   return (
     <form
+      noValidate
       className="grid gap-3"
       onSubmit={(e) => {
         e.preventDefault();
+        setTried(true);
+        if (!allValid(errors)) return;
         run(() => spaceApi(c, s).modules({ id: moduleId }).submissions.post({ repoUrl, liveUrl: liveUrl || null, notes: notes || null }), {
           success: "Submitted. A mentor will review it.",
         });
       }}
     >
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Code (repository link)" htmlFor="p-repo">
-          <Input id="p-repo" type="url" required placeholder="https://github.com/you/project" value={repoUrl} onChange={(e) => setRepo(e.target.value)} />
+        <Field label="Code (repository link)" htmlFor="p-repo" error={err("repo")}>
+          <Input id="p-repo" type="url" required placeholder="https://github.com/you/project" value={repoUrl} onChange={(e) => setRepo(e.target.value)} {...invalid("p-repo", err("repo"))} />
         </Field>
-        <Field label="Live link (optional)" htmlFor="p-live">
-          <Input id="p-live" type="url" placeholder="https://your-project.vercel.app" value={liveUrl} onChange={(e) => setLive(e.target.value)} />
+        <Field label="Live link (optional)" htmlFor="p-live" error={err("live")}>
+          <Input id="p-live" type="url" placeholder="https://your-project.vercel.app" value={liveUrl} onChange={(e) => setLive(e.target.value)} {...invalid("p-live", err("live"))} />
         </Field>
       </div>
-      <Field label="Notes for your mentor (optional)" htmlFor="p-notes">
+      <Field label="Notes for your mentor (optional)" htmlFor="p-notes" error={err("notes")}>
         <Textarea id="p-notes" rows={3} maxLength={2000} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="What you're proud of, what you'd improve, anything they should test." />
       </Field>
       <div>

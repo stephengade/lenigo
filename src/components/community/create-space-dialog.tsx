@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api, apiError } from "@/lib/api";
 import { cn, slugify } from "@/lib/utils";
+import { FieldError, invalid } from "@/components/form-field";
+import { allValid, textError } from "@/lib/validate";
 
 export function CreateSpaceDialog({ communitySlug }: { communitySlug: string }) {
   const router = useRouter();
@@ -23,9 +25,20 @@ export function CreateSpaceDialog({ communitySlug }: { communitySlug: string }) 
   const [joinPolicy, setJoinPolicy] = useState<"OPEN" | "INVITE">("OPEN");
 
   const effectiveSlug = slugTouched ? slug : slugify(name);
+  const [tried, setTried] = useState(false);
+  const errors = {
+    name: textError(name, { label: "the space's name", min: 2, max: 60 }),
+    slug:
+      !effectiveSlug || /^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/.test(effectiveSlug)
+        ? null
+        : "Use lowercase letters, numbers and single hyphens (not at the start or end).",
+  };
+  const err = (k: keyof typeof errors) => (tried ? errors[k] : null);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    setTried(true);
+    if (!allValid(errors)) return;
     start(async () => {
       const { data, error } = await api.c({ community: communitySlug }).spaces.post({
         name,
@@ -47,7 +60,7 @@ export function CreateSpaceDialog({ communitySlug }: { communitySlug: string }) 
         <Plus /> New space
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
-        <form onSubmit={submit} className="space-y-5">
+        <form noValidate onSubmit={submit} className="space-y-5">
           <DialogHeader>
             <DialogTitle>Create a space</DialogTitle>
             <DialogDescription>A space is a track group inside your community, like Web Development or Data Science.</DialogDescription>
@@ -55,7 +68,8 @@ export function CreateSpaceDialog({ communitySlug }: { communitySlug: string }) 
 
           <div className="space-y-1.5">
             <Label htmlFor="space-name">Name</Label>
-            <Input id="space-name" required minLength={2} maxLength={60} value={name} onChange={(e) => setName(e.target.value)} placeholder="Web Development" />
+            <Input id="space-name" required minLength={2} maxLength={60} value={name} onChange={(e) => setName(e.target.value)} placeholder="Web Development" {...invalid("space-name", err("name"))} />
+            <FieldError id="space-name-error" message={err("name")} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="space-slug">URL</Label>
@@ -69,9 +83,10 @@ export function CreateSpaceDialog({ communitySlug }: { communitySlug: string }) 
                   setSlugTouched(true);
                   setSlug(e.target.value.toLowerCase());
                 }}
-                pattern="[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?"
+                {...invalid("space-slug", err("slug"))}
               />
             </div>
+            <FieldError id="space-slug-error" message={err("slug")} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="space-desc">Description</Label>

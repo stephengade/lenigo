@@ -6,6 +6,7 @@ import { communityRequests, users, type User } from "@/server/db/schema";
 import { env } from "@/server/env";
 import { logActivity } from "@/server/activity";
 import { fail } from "@/server/auth/access";
+import { isEmail, parseHttpsUrl } from "@/lib/validate";
 import { global } from "@/lib/permissions";
 import { sendEmail } from "@/server/email/send";
 import CommunityRequestEmail from "@/emails/community-request";
@@ -33,8 +34,6 @@ const ALL_PER_HOUR = 60;
 /** Keyed hash of the sender's IP, so limits work without storing the address. */
 const ipHash = (ip: string | null) => createHmac("sha256", env.DATABASE_URL).update(`community-request:${ip ?? "unknown"}`).digest("hex");
 
-/** Plain addresses only: no `?`, `&`, `%` or `/`, so it's safe in a mailto: link and a reply-to. */
-const EMAIL = /^[A-Za-z0-9._+'-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$/;
 
 const clean = (v: string | null | undefined, max: number) => {
   const s = v?.replace(/\s+/g, " ").trim() ?? "";
@@ -55,19 +54,16 @@ export async function submitCommunityRequest(input: CommunityRequestInput, ip: s
   const location = clean(input.location, 120);
   const about = input.about?.trim().slice(0, 2000) ?? "";
   if (!name || name.length < 2) throw fail.badRequest("Tell us your name.");
-  if (!email || !EMAIL.test(email)) throw fail.badRequest("Enter an email we can reply to.");
+  // Plain addresses only (lib/validate): no `?`, `&`, `%` or `/`, so it's safe in a mailto: link and a reply-to.
+  if (!email || !isEmail(email)) throw fail.badRequest("Enter an email we can reply to.");
   if (!communityName || communityName.length < 2) throw fail.badRequest("What's your community called?");
   if (!(COMMUNITY_SIZES as readonly string[]).includes(input.size)) throw fail.badRequest("Pick a size.");
   if (about.length < 20) throw fail.badRequest("Tell us a little about your community and what you want to learn (a sentence or two).");
   let link: string | null = null;
   if (input.link?.trim()) {
-    try {
-      const u = new URL(input.link.trim());
-      if (u.protocol !== "https:") throw new Error();
-      link = u.toString().slice(0, 300);
-    } catch {
-      throw fail.badRequest("The link must start with https://");
-    }
+    const u = parseHttpsUrl(input.link);
+    if (!u || u.length > 300) throw fail.badRequest("The link must be a complete https:// address.");
+    link = u;
   }
 
   const hash = ipHash(ip);

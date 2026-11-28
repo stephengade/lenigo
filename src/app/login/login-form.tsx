@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { FieldError, invalid } from "@/components/form-field";
+import { emailError, emailSuggestion } from "@/lib/validate";
 
 export function GithubIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
@@ -46,6 +48,10 @@ export function LoginForm({
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Field errors show once the learner has tried to continue, not while they're still typing. */
+  const [tried, setTried] = useState(false);
+  const emailProblem = fixedEmail ? null : emailError(email);
+  const suggestion = fixedEmail ? null : emailSuggestion(email);
 
   async function github() {
     setBusy("github");
@@ -62,19 +68,26 @@ export function LoginForm({
 
   async function sendCode(e?: React.FormEvent) {
     e?.preventDefault();
+    setTried(true);
+    // Supabase would send a code to "ada@gmail" without complaint, so the address is checked first.
+    if (emailProblem) return;
     setBusy("sending");
     setError(null);
-    const { error } = await createSupabaseBrowserClient().auth.signInWithOtp({
-      email: email.trim(),
-      // Only used by the email's "open the sign-in page" link; the code itself works anywhere.
-      options: {
-        emailRedirectTo: invite ? `${location.origin}${next}` : `${location.origin}/login?next=${encodeURIComponent(next)}`,
-        shouldCreateUser: true,
-      },
-    });
+    // The server checks the address may sign in (an account or an invite) before a code goes out.
+    let message: string | null = null;
+    try {
+      const res = await fetch("/auth/otp", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), next, invite }),
+      });
+      if (!res.ok) message = ((await res.json().catch(() => ({}))) as { error?: string }).error ?? "We couldn't send a code. Try again.";
+    } catch {
+      message = "Network problem. Check your connection and try again.";
+    }
     setBusy(null);
-    if (error) {
-      setError(/rate|seconds/i.test(error.message) ? "Too many codes requested. Wait a minute, then try again." : error.message);
+    if (message) {
+      setError(message);
       return;
     }
     setSent(true);
@@ -198,8 +211,19 @@ export function LoginForm({
             readOnly={Boolean(fixedEmail)}
             className={fixedEmail ? "bg-surface text-muted-foreground" : undefined}
             onChange={(e) => setEmail(e.target.value)}
+            {...invalid("email", tried ? emailProblem : null)}
           />
           {fixedEmail ? <p className="text-xs text-muted-foreground">This invite was sent to this address.</p> : null}
+          {tried && emailProblem ? (
+            <div className="flex flex-wrap items-center gap-x-2">
+              <FieldError id="email-error" message={emailProblem} />
+              {suggestion ? (
+                <button type="button" className="text-xs font-semibold text-primary underline-offset-2 hover:underline" onClick={() => setEmail(suggestion)}>
+                  Use {suggestion}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         <Button type="submit" size="lg" className="w-full" disabled={busy !== null || !email}>
           {busy === "sending" ? <Loader2 className="animate-spin" /> : null}
@@ -213,6 +237,8 @@ export function LoginForm({
           className="-ml-2"
           disabled={busy !== null || !email}
           onClick={() => {
+            setTried(true);
+            if (emailProblem) return;
             setSent(false);
             setError(null);
             setStep("code");

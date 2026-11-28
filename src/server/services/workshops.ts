@@ -3,6 +3,7 @@ import { and, asc, desc, eq, gte, inArray, lt } from "drizzle-orm";
 import { db } from "@/server/db";
 import { modules, spaceMembers, submissions, users, workshopRsvps, workshops } from "@/server/db/schema";
 import { fail, type MemberAccess } from "@/server/auth/access";
+import { parseHttpsUrl } from "@/lib/validate";
 import { logActivity } from "@/server/activity";
 import { afterResponse, notifyWorkshopCancelled, REMINDER_WINDOW_MS } from "@/server/services/notifications";
 import { awardPoints } from "@/server/points/rules";
@@ -62,13 +63,9 @@ export async function listWorkshops(a: MemberAccess) {
 
 const httpsUrl = (raw: string | null | undefined) => {
   if (!raw?.trim()) return null;
-  try {
-    const u = new URL(raw.trim());
-    if (u.protocol !== "https:") throw new Error();
-    return u.toString();
-  } catch {
-    throw fail.badRequest("The meeting link must be an https link.");
-  }
+  const u = parseHttpsUrl(raw);
+  if (!u) throw fail.badRequest("The meeting link must be a complete https link.");
+  return u;
 };
 
 export async function createWorkshop(a: MemberAccess, input: WorkshopInput) {

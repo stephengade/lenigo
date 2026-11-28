@@ -5,7 +5,8 @@ import { Loader2, Send, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Field, NativeSelect } from "@/components/form-field";
+import { Field, invalid, NativeSelect } from "@/components/form-field";
+import { allValid, textError } from "@/lib/validate";
 import { spaceApi, useApiAction } from "@/components/use-api-action";
 import { cn } from "@/lib/utils";
 
@@ -17,24 +18,34 @@ export function StandupForm({ c, s, modules }: Scope & { modules: { id: string; 
   const [nextStep, setNext] = useState("");
   const [blockers, setBlockers] = useState("");
   const [moduleId, setModule] = useState(modules[0]?.id ?? "");
+  const [tried, setTried] = useState(false);
+  const errors = {
+    did: textError(didToday, { label: "what you did today", min: 10, max: 1500 }),
+    next: textError(nextStep, { label: "your next step", min: 5, max: 600 }),
+    blockers: textError(blockers, { label: "blockers", max: 600 }),
+  };
+  const err = (k: keyof typeof errors) => (tried ? errors[k] : null);
   return (
     <form
+      noValidate
       className="grid gap-3"
       onSubmit={(e) => {
         e.preventDefault();
+        setTried(true);
+        if (!allValid(errors)) return;
         run(() => spaceApi(c, s).standups.post({ didToday, nextStep, blockers: blockers || null, moduleId: moduleId || null }), {
           success: (d) => (d.milestone ? `${d.milestone}-day streak! Keep it going.` : `Posted. Streak: ${d.streak} day${d.streak === 1 ? "" : "s"}.`),
         });
       }}
     >
-      <Field label="What did you build or learn today?" htmlFor="su-did">
-        <Textarea id="su-did" rows={3} required minLength={10} maxLength={1500} value={didToday} onChange={(e) => setDid(e.target.value)} />
+      <Field label="What did you build or learn today?" htmlFor="su-did" error={err("did")}>
+        <Textarea id="su-did" rows={3} required minLength={10} maxLength={1500} value={didToday} onChange={(e) => setDid(e.target.value)} {...invalid("su-did", err("did"))} />
       </Field>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Next step" htmlFor="su-next">
-          <Input id="su-next" required minLength={5} maxLength={600} value={nextStep} onChange={(e) => setNext(e.target.value)} />
+        <Field label="Next step" htmlFor="su-next" error={err("next")}>
+          <Input id="su-next" required minLength={5} maxLength={600} value={nextStep} onChange={(e) => setNext(e.target.value)} {...invalid("su-next", err("next"))} />
         </Field>
-        <Field label="Anything blocking you?" htmlFor="su-block" hint="Mentors watch for these.">
+        <Field label="Anything blocking you?" htmlFor="su-block" hint="Mentors watch for these." error={err("blockers")}>
           <Input id="su-block" maxLength={600} value={blockers} onChange={(e) => setBlockers(e.target.value)} placeholder="Optional" />
         </Field>
       </div>

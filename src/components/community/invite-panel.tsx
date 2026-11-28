@@ -13,6 +13,8 @@ import { RoleBadge } from "@/components/role-badge";
 import { api, apiError } from "@/lib/api";
 import { ROLE_LABEL, type CommunityRole, type SpaceRole } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
+import { FieldError, invalid } from "@/components/form-field";
+import { emailError, intError } from "@/lib/validate";
 
 export type InviteScope =
   | { kind: "community"; communitySlug: string }
@@ -41,10 +43,15 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
   const [expiresInDays, setExpiresInDays] = useState("14"); // email is the default mode, and email invites last 14 days
   const [result, setResult] = useState<{ url: string; emailed: boolean; emailError?: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [tried, setTried] = useState(false);
+  const problem = mode === "email" ? emailError(email) : intError(maxUses, { label: "max uses", min: 1, max: 1000 });
+  const shown = tried ? problem : null;
   const [pending, start] = useTransition();
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
+    setTried(true);
+    if (problem) return;
     start(async () => {
       const body = {
         email: mode === "email" ? email : null,
@@ -77,7 +84,7 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
 
   return (
     <div className="space-y-6">
-      <form onSubmit={create} className="rounded-2xl bg-card shadow-card ring-1 ring-foreground/5 p-5">
+      <form noValidate onSubmit={create} className="rounded-2xl bg-card shadow-card ring-1 ring-foreground/5 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-display text-lg font-bold">Invite people</h2>
           <div className="inline-flex rounded-full bg-surface p-1 text-sm" role="tablist">
@@ -94,6 +101,7 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
                 aria-selected={mode === m}
                 onClick={() => {
                   setMode(m);
+                  setTried(false);
                   setResult(null);
                   setExpiresInDays(m === "email" ? "14" : "7");
                 }}
@@ -112,12 +120,14 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
           {mode === "email" ? (
             <div className="space-y-1.5">
               <Label htmlFor="invite-email">Email address</Label>
-              <Input id="invite-email" type="email" required placeholder="ada@oauife.edu.ng" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Input id="invite-email" type="email" required placeholder="ada@oauife.edu.ng" value={email} onChange={(e) => setEmail(e.target.value)} {...invalid("invite-email", shown)} />
+              <FieldError id="invite-email-error" message={shown} />
             </div>
           ) : (
             <div className="space-y-1.5">
               <Label htmlFor="invite-uses">Max uses</Label>
-              <Input id="invite-uses" type="number" min={1} max={1000} placeholder="Unlimited" value={maxUses} onChange={(e) => setMaxUses(e.target.value)} />
+              <Input id="invite-uses" type="number" min={1} max={1000} placeholder="Unlimited" value={maxUses} onChange={(e) => setMaxUses(e.target.value)} {...invalid("invite-uses", shown)} />
+              <FieldError id="invite-uses-error" message={shown} />
             </div>
           )}
           <div className="space-y-1.5">
@@ -153,7 +163,7 @@ export function InvitePanel({ scope, roles, invites }: { scope: InviteScope; rol
               ))}
             </select>
           </div>
-          <Button type="submit" disabled={pending || (mode === "email" && !email)}>
+          <Button type="submit" disabled={pending}>
             {pending ? <Loader2 className="animate-spin" /> : mode === "email" ? <Mail /> : <Link2 />}
             {mode === "email" ? "Send invite" : "Create link"}
           </Button>

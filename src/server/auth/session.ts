@@ -9,12 +9,16 @@ import { users, type User } from "@/server/db/schema";
 import { env } from "@/server/env";
 import { logActivity } from "@/server/activity";
 import { slugify } from "@/lib/utils";
+import { canSignIn, NotInvitedError } from "@/server/auth/eligibility";
 
 /**
  * Upsert the app's user row from a Supabase Auth user. Runs after every sign-in.
  * Promotes SUPER_ADMIN_EMAILS to SUPER_ADMIN (never demotes).
+ * A NEW account is only created for someone allowed to sign in (an invite, or a Super Admin
+ * address): otherwise it throws NotInvitedError and the caller signs them out. `invite` is the
+ * invite token they arrived with, if any.
  */
-export async function syncUserFromAuth(authUser: AuthUser, opts: { logLogin?: boolean } = {}) {
+export async function syncUserFromAuth(authUser: AuthUser, opts: { logLogin?: boolean; invite?: string | null } = {}) {
   const email = authUser.email?.toLowerCase();
   if (!email) throw new Error("Signed-in account has no email address.");
 
@@ -42,6 +46,7 @@ export async function syncUserFromAuth(authUser: AuthUser, opts: { logLogin?: bo
       .where(eq(users.id, authUser.id))
       .returning();
   } else {
+    if (!(await canSignIn(email, opts.invite))) throw new NotInvitedError();
     [row] = await db
       .insert(users)
       .values({
@@ -96,7 +101,13 @@ export const getSessionUser = cache(async (): Promise<User | null> => {
 
   // Signed in with Supabase but no app row yet (e.g. the callback failed half-way): repair it.
   const { data: authData } = await supabase.auth.getUser();
-  const repaired = authData.user ? await syncUserFromAuth(authData.user) : null;
+  let repaired: User | null = null;
+  try {
+    repaired = authData.user ? await syncUserFromAuth(authData.user) : null;
+  } catch (e) {
+    if (!(e instanceof NotInvitedError)) throw e;
+    return null; // a Supabase session without an invite isn't a Lenigo sign-in
+  }
   return repaired?.deactivatedAt ? null : repaired;
 });
 

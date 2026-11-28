@@ -25,6 +25,7 @@ import {
   type TrackEnrollment,
 } from "@/server/db/schema";
 import { fail, type MemberAccess } from "@/server/auth/access";
+import { parseHttpsUrl } from "@/lib/validate";
 import { logActivity } from "@/server/activity";
 import { afterResponse, notifyPromoted } from "@/server/services/notifications";
 import { awardPoints } from "@/server/points/rules";
@@ -265,13 +266,9 @@ const httpsList = (links: string[]) =>
     .filter(Boolean)
     .slice(0, 5)
     .map((l) => {
-      try {
-        const u = new URL(l);
-        if (u.protocol !== "https:") throw new Error();
-        return u.toString();
-      } catch {
-        throw fail.badRequest(`"${l.slice(0, 60)}" isn't an https link.`);
-      }
+      const u = parseHttpsUrl(l);
+      if (!u) throw fail.badRequest(`"${l.slice(0, 60)}" isn't a complete https link.`);
+      return u;
     });
 
 /**
@@ -728,13 +725,9 @@ export async function submitCheckpoint(a: MemberAccess, checkpointId: string, an
 
 const httpsUrl = (raw: string | null | undefined, label: string) => {
   if (!raw?.trim()) return null;
-  try {
-    const u = new URL(raw.trim());
-    if (u.protocol !== "https:") throw new Error();
-    return u.toString();
-  } catch {
-    throw fail.badRequest(`${label} must be an https link.`);
-  }
+  const u = parseHttpsUrl(raw);
+  if (!u) throw fail.badRequest(`${label} must be a complete https link.`);
+  return u;
 };
 
 export async function submitProject(a: MemberAccess, moduleId: string, input: { repoUrl: string; liveUrl?: string | null; notes?: string | null }) {

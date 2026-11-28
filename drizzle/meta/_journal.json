@@ -71,6 +71,13 @@
       "when": 1795858523576,
       "tag": "0009_curriculum_slugs",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795861944823,
+      "tag": "0010_sign_in_requests",
+      "breakpoints": true
     }
   ]
 }

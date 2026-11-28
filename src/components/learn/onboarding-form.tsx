@@ -6,7 +6,8 @@ import { Check, Loader2, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Field } from "@/components/form-field";
+import { Field, FieldError, invalid } from "@/components/form-field";
+import { allValid, intError, textError, urlError } from "@/lib/validate";
 import { spaceApi, useApiAction } from "@/components/use-api-action";
 import { INTAKE_QUESTIONS } from "@/lib/placement";
 import { cn } from "@/lib/utils";
@@ -34,12 +35,24 @@ export function OnboardingForm({
   const [experience, setExperience] = useState(initial?.experience ?? "");
   const [links, setLinks] = useState<string[]>([...(initial?.links ?? []), "", "", ""].slice(0, 3));
   const [hours, setHours] = useState(String(initial?.hoursPerWeek ?? 6));
+  const [tried, setTried] = useState(false);
+  const linkErrors = links.map((l) => urlError(l));
+  const errors = {
+    track: trackId ? null : "Pick the track you want to start with.",
+    experience: textError(experience, { label: "a little about your experience", min: 10, max: 2000 }),
+    links: linkErrors.find(Boolean) ?? null,
+    hours: intError(hours, { label: "hours per week", min: 1, max: 80, required: true }),
+  };
+  const err = (k: keyof typeof errors) => (tried ? errors[k] : null);
 
   return (
     <form
+      noValidate
       className="grid gap-6"
       onSubmit={(e) => {
         e.preventDefault();
+        setTried(true);
+        if (!allValid(errors)) return;
         run(
           () =>
             spaceApi(c, s).onboarding.post({
@@ -82,13 +95,14 @@ export function OnboardingForm({
           })}
         </div>
         <p className="text-xs text-muted-foreground">{enrolledTrackId ? "You're already in a track. A mentor can add you to another one." : Q.goalTrackId.hint}</p>
+        <FieldError message={err("track")} />
       </fieldset>
 
-      <Field label={Q.experience.label} hint={Q.experience.hint} htmlFor="ob-exp">
-        <Textarea id="ob-exp" rows={4} required minLength={10} maxLength={2000} value={experience} onChange={(e) => setExperience(e.target.value)} />
+      <Field label={Q.experience.label} hint={Q.experience.hint} htmlFor="ob-exp" error={err("experience")}>
+        <Textarea id="ob-exp" rows={4} required minLength={10} maxLength={2000} value={experience} onChange={(e) => setExperience(e.target.value)} {...invalid("ob-exp", err("experience"))} />
       </Field>
 
-      <Field label={Q.links.label} hint={Q.links.hint}>
+      <Field label={Q.links.label} hint={Q.links.hint} error={err("links")}>
         <div className="grid gap-2">
           {links.map((l, i) => (
             <Input
@@ -99,17 +113,18 @@ export function OnboardingForm({
               value={l}
               maxLength={300}
               onChange={(e) => setLinks(links.map((x, j) => (j === i ? e.target.value : x)))}
+              aria-invalid={tried && !!linkErrors[i] ? true : undefined}
             />
           ))}
         </div>
       </Field>
 
-      <Field label={Q.hoursPerWeek.label} hint={Q.hoursPerWeek.hint} htmlFor="ob-hours" className="max-w-xs">
-        <Input id="ob-hours" type="number" min={1} max={80} required value={hours} onChange={(e) => setHours(e.target.value)} />
+      <Field label={Q.hoursPerWeek.label} hint={Q.hoursPerWeek.hint} htmlFor="ob-hours" className="max-w-xs" error={err("hours")}>
+        <Input id="ob-hours" type="number" min={1} max={80} required value={hours} onChange={(e) => setHours(e.target.value)} {...invalid("ob-hours", err("hours"))} />
       </Field>
 
       <div>
-        <Button type="submit" size="lg" disabled={pending || !trackId}>
+        <Button type="submit" size="lg" disabled={pending}>
           {pending ? <Loader2 className="animate-spin" /> : null} {enrolledTrackId ? "Save answers" : "Start learning"}
         </Button>
       </div>

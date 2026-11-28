@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Field, NativeSelect } from "@/components/form-field";
+import { Field, invalid, NativeSelect } from "@/components/form-field";
+import { allValid, isPast, textError, urlError } from "@/lib/validate";
 import { spaceApi, useApiAction } from "@/components/use-api-action";
 import { cn } from "@/lib/utils";
 
@@ -26,6 +27,20 @@ export function ScheduleDialog({ c, s }: Scope) {
   const [meetingUrl, setUrl] = useState("");
   const [venue, setVenue] = useState("");
   const [agenda, setAgenda] = useState("");
+  const [tried, setTried] = useState(false);
+  /** Checked on submit (reading the clock while rendering isn't allowed). */
+  const [inPast, setInPast] = useState(false);
+  const start = startsAt ? new Date(startsAt) : null;
+  const end = endsAt ? new Date(endsAt) : null;
+  const errors = {
+    title: textError(title, { label: "a title", min: 3, max: 120 }),
+    start: !start || Number.isNaN(start.getTime()) ? "Pick when it starts." : inPast ? "That time has already passed." : null,
+    end: end && start && !Number.isNaN(end.getTime()) && end <= start ? "The end must be after the start." : null,
+    url: type === "ONLINE_CALL" ? urlError(meetingUrl, { required: true, label: "call link" }) : null,
+    venue: type === "PHYSICAL" ? textError(venue, { label: "the venue", min: 2, max: 200 }) : null,
+    agenda: textError(agenda, { label: "the agenda", max: 4000 }),
+  };
+  const err = (k: keyof typeof errors) => (tried ? errors[k] : null);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button />}>
@@ -33,9 +48,14 @@ export function ScheduleDialog({ c, s }: Scope) {
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <form
+          noValidate
           className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
+            setTried(true);
+            const past = !!start && isPast(start);
+            setInPast(past);
+            if (past || !allValid(errors)) return;
             run(
               () =>
                 spaceApi(c, s).workshops.post({
@@ -68,15 +88,19 @@ export function ScheduleDialog({ c, s }: Scope) {
               </button>
             ))}
           </div>
-          <Field label="Title" htmlFor="w-title">
-            <Input id="w-title" required maxLength={120} value={title} onChange={(e) => setTitle(e.target.value)} placeholder={kind === "WORKSHOP" ? "Intro to Git and GitHub" : "Friday demo session"} />
+          <Field label="Title" htmlFor="w-title" error={err("title")}>
+            <Input id="w-title" required maxLength={120} value={title} onChange={(e) => setTitle(e.target.value)} {...invalid("w-title", err("title"))} placeholder={kind === "WORKSHOP" ? "Intro to Git and GitHub" : "Friday demo session"} />
           </Field>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Starts" htmlFor="w-start">
-              <Input id="w-start" type="datetime-local" required value={startsAt} onChange={(e) => setStarts(e.target.value)} />
+            <Field label="Starts" htmlFor="w-start" error={err("start")}>
+              <Input id="w-start" type="datetime-local" required value={startsAt} onChange={(e) => {
+                  setStarts(e.target.value);
+                  setInPast(false);
+                }}
+                {...invalid("w-start", err("start"))} />
             </Field>
-            <Field label="Ends (optional)" htmlFor="w-end">
-              <Input id="w-end" type="datetime-local" value={endsAt} onChange={(e) => setEnds(e.target.value)} />
+            <Field label="Ends (optional)" htmlFor="w-end" error={err("end")}>
+              <Input id="w-end" type="datetime-local" min={startsAt || undefined} value={endsAt} onChange={(e) => setEnds(e.target.value)} {...invalid("w-end", err("end"))} />
             </Field>
           </div>
           <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
@@ -87,16 +111,16 @@ export function ScheduleDialog({ c, s }: Scope) {
               </NativeSelect>
             </Field>
             {type === "ONLINE_CALL" ? (
-              <Field label="Call link" htmlFor="w-url" hint="Only people who RSVP see it.">
-                <Input id="w-url" type="url" required value={meetingUrl} onChange={(e) => setUrl(e.target.value)} placeholder="https://meet.google.com/…" />
+              <Field label="Call link" htmlFor="w-url" hint="Only people who RSVP see it." error={err("url")}>
+                <Input id="w-url" type="url" required value={meetingUrl} onChange={(e) => setUrl(e.target.value)} placeholder="https://meet.google.com/…" {...invalid("w-url", err("url"))} />
               </Field>
             ) : (
-              <Field label="Venue" htmlFor="w-venue">
-                <Input id="w-venue" required maxLength={200} value={venue} onChange={(e) => setVenue(e.target.value)} />
+              <Field label="Venue" htmlFor="w-venue" error={err("venue")}>
+                <Input id="w-venue" required maxLength={200} value={venue} onChange={(e) => setVenue(e.target.value)} {...invalid("w-venue", err("venue"))} />
               </Field>
             )}
           </div>
-          <Field label="Agenda (optional)" htmlFor="w-agenda">
+          <Field label="Agenda (optional)" htmlFor="w-agenda" error={err("agenda")}>
             <Textarea id="w-agenda" rows={3} maxLength={4000} value={agenda} onChange={(e) => setAgenda(e.target.value)} />
           </Field>
           <DialogFooter>
