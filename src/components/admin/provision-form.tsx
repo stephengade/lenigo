@@ -11,6 +11,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { ButtonLink } from "@/components/button-link";
 import { api, apiError } from "@/lib/api";
 import { slugify } from "@/lib/utils";
+import { FieldError, invalid } from "@/components/form-field";
+import { useZodForm } from "@/components/use-zod-form";
+import { provisionSchema } from "@/lib/schemas";
 
 const SUGGESTIONS = ["Web Development", "Data Science", "Mobile Development", "Cloud & DevOps", "UI/UX Design", "AI & ML"];
 
@@ -20,16 +23,17 @@ type Result = { slug: string; spaces: string[]; ownerInviteUrl: string; emailed:
 export function ProvisionForm({ initial }: { initial?: { name?: string; ownerEmail?: string } } = {}) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [name, setName] = useState(initial?.name ?? "");
-  const [slug, setSlug] = useState("");
+  const form = useZodForm(provisionSchema, { name: initial?.name ?? "", slug: slugify(initial?.name ?? ""), description: "", ownerEmail: initial?.ownerEmail ?? "" });
+  const { register, formState } = form;
+  const err = (k: keyof typeof formState.errors) => formState.errors[k]?.message;
+  /** The slug follows the name until someone edits it by hand. */
   const [slugTouched, setSlugTouched] = useState(false);
-  const [description, setDescription] = useState("");
-  const [ownerEmail, setOwnerEmail] = useState(initial?.ownerEmail ?? "");
+  const name = form.watch("name");
+  const ownerEmail = form.watch("ownerEmail");
   const [spaces, setSpaces] = useState<string[]>([]);
   const [draft, setDraft] = useState("");
   const [result, setResult] = useState<Result | null>(null);
   const [copied, setCopied] = useState(false);
-  const effectiveSlug = slugTouched ? slug : slugify(name);
 
   function addSpace(value: string) {
     const v = value.trim();
@@ -38,24 +42,23 @@ export function ProvisionForm({ initial }: { initial?: { name?: string; ownerEma
     setDraft("");
   }
 
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
+  const submit = form.handleSubmit((v) => {
     const pendingSpaces = draft.trim() ? [...spaces, draft.trim()] : spaces;
     start(async () => {
       const { data, error } = await api.admin.communities.post({
-        name,
-        slug: effectiveSlug,
-        description: description || undefined,
-        ownerEmail,
+        name: v.name,
+        slug: v.slug,
+        description: v.description ?? undefined,
+        ownerEmail: v.ownerEmail,
         spaces: pendingSpaces,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
       if (error) return void toast.error(apiError(error));
       setResult(data);
-      toast.success(`${name} is live at /c/${data.slug}`);
+      toast.success(`${v.name} is live at /c/${data.slug}`);
       router.refresh();
     });
-  }
+  });
 
   if (result) {
     return (
@@ -101,11 +104,8 @@ export function ProvisionForm({ initial }: { initial?: { name?: string; ownerEma
             variant="ghost"
             onClick={() => {
               setResult(null);
-              setName("");
-              setSlug("");
+              form.reset({ name: "", slug: "", description: "", ownerEmail: "" });
               setSlugTouched(false);
-              setDescription("");
-              setOwnerEmail("");
               setSpaces([]);
               setCopied(false);
             }}
@@ -118,32 +118,41 @@ export function ProvisionForm({ initial }: { initial?: { name?: string; ownerEma
   }
 
   return (
-    <form onSubmit={submit} className="space-y-8">
+    <form noValidate onSubmit={submit} className="space-y-8">
       <section className="space-y-5 rounded-2xl bg-card shadow-card ring-1 ring-foreground/5 p-6">
         <h2 className="font-display text-lg font-bold">Community</h2>
         <div className="grid gap-5 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="name">Community name</Label>
-            <Input id="name" required minLength={2} maxLength={80} placeholder="GDG OAU" value={name} onChange={(e) => setName(e.target.value)} />
+            <Input
+              id="name"
+              maxLength={80}
+              placeholder="GDG OAU"
+              {...register("name", {
+                onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+                  if (!slugTouched) form.setValue("slug", slugify(e.target.value), { shouldValidate: formState.isSubmitted });
+                },
+              })}
+              {...invalid("name", err("name"))}
+            />
+            <FieldError id="name-error" message={err("name")} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="slug">URL slug</Label>
-            <div className="flex items-center rounded-xl border border-input bg-surface pl-4 font-mono text-xs text-muted-foreground shadow-xs focus-within:border-primary focus-within:ring-4 focus-within:ring-ring/15">
+            <div className="flex items-center rounded-control border border-input bg-surface pl-4 font-mono text-xs text-muted-foreground shadow-xs focus-within:border-primary focus-within:ring-4 focus-within:ring-ring/15">
               <span>/c/</span>
               <input
                 id="slug"
-                required
-                pattern="[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?"
-                title="Lowercase letters, numbers and hyphens"
                 className="h-8 min-w-0 flex-1 bg-transparent pr-3 text-foreground outline-none"
                 placeholder="gdg-oau"
-                value={effectiveSlug}
-                onChange={(e) => {
-                  setSlugTouched(true);
-                  setSlug(e.target.value.toLowerCase());
-                }}
+                {...register("slug", {
+                  setValueAs: (v: string) => v.toLowerCase(),
+                  onChange: () => setSlugTouched(true),
+                })}
+                {...invalid("slug", err("slug"))}
               />
             </div>
+            <FieldError id="slug-error" message={err("slug")} />
           </div>
         </div>
         <div className="space-y-1.5">
@@ -153,9 +162,10 @@ export function ProvisionForm({ initial }: { initial?: { name?: string; ownerEma
             rows={2}
             maxLength={500}
             placeholder="Google Developer Group at Obafemi Awolowo University."
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            {...register("description")}
+            {...invalid("description", err("description"))}
           />
+          <FieldError id="description-error" message={err("description")} />
         </div>
       </section>
 
@@ -223,12 +233,13 @@ export function ProvisionForm({ initial }: { initial?: { name?: string; ownerEma
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="owner">Community Lead email</Label>
-          <Input id="owner" type="email" required placeholder="lead@gdg-oau.dev" value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} />
+          <Input id="owner" type="email" placeholder="lead@gdg-oau.dev" {...register("ownerEmail")} {...invalid("owner", err("ownerEmail"))} />
+          <FieldError id="owner-error" message={err("ownerEmail")} />
         </div>
       </section>
 
       <div className="flex justify-end">
-        <Button type="submit" size="lg" className="h-11 px-5" disabled={pending || !name || !effectiveSlug || !ownerEmail}>
+        <Button type="submit" size="lg" className="h-11 px-5" disabled={pending}>
           {pending ? <Loader2 className="animate-spin" /> : null} Provision community
         </Button>
       </div>

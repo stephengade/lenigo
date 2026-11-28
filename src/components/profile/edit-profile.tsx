@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Field } from "@/components/form-field";
+import { Field, invalid } from "@/components/form-field";
+import { useZodForm } from "@/components/use-zod-form";
+import { profileSchema } from "@/lib/schemas";
 import { useApiAction } from "@/components/use-api-action";
 import { api } from "@/lib/api";
 
@@ -19,10 +21,8 @@ export function EditProfileDialog({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const { pending, run } = useApiAction();
-  const [name, setName] = useState(profile.name ?? "");
-  const [username, setUsername] = useState(profile.username);
-  const [bio, setBio] = useState(profile.bio ?? "");
-  const [emails, setEmails] = useState(profile.emailNotifications);
+  const form = useZodForm(profileSchema, { name: profile.name ?? "", username: profile.username, bio: profile.bio ?? "", emailNotifications: profile.emailNotifications });
+  const err = (k: "name" | "username" | "bio") => form.formState.errors[k]?.message;
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button variant="outline" size="sm" />}>
@@ -30,10 +30,10 @@ export function EditProfileDialog({
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <form
+          noValidate
           className="space-y-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            run(() => api.me.patch({ name, username, bio: bio || null, emailNotifications: emails }), {
+          onSubmit={form.handleSubmit((v) =>
+            run(() => api.me.patch(v), {
               success: "Profile saved",
               refresh: false,
               onDone: (d) => {
@@ -41,29 +41,28 @@ export function EditProfileDialog({
                 router.replace(`/u/${d.username}`);
                 router.refresh();
               },
-            });
-          }}
+            }),
+          )}
         >
           <DialogHeader>
             <DialogTitle>Your public profile</DialogTitle>
             <DialogDescription>Anyone with the link can see this page: your name, bio, levels and approved projects. Never your email or points.</DialogDescription>
           </DialogHeader>
-          <Field label="Name" htmlFor="pf-name">
-            <Input id="pf-name" required minLength={2} maxLength={60} value={name} onChange={(e) => setName(e.target.value)} />
+          <Field label="Name" htmlFor="pf-name" error={err("name")}>
+            <Input id="pf-name" maxLength={60} {...form.register("name")} {...invalid("pf-name", err("name"))} />
           </Field>
-          <Field label="Username" htmlFor="pf-user" hint="lenigo/u/your-name. Lowercase letters, numbers and hyphens.">
-            <Input id="pf-user" required minLength={3} maxLength={30} pattern="[a-z0-9][a-z0-9-]{1,28}[a-z0-9]" value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())} />
+          <Field label="Username" htmlFor="pf-user" hint="lenigo/u/your-name. Lowercase letters, numbers and hyphens." error={err("username")}>
+            <Input id="pf-user" maxLength={30} autoCapitalize="none" {...form.register("username")} {...invalid("pf-user", err("username"))} />
           </Field>
-          <Field label="Bio" htmlFor="pf-bio">
-            <Textarea id="pf-bio" rows={3} maxLength={280} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="What you're learning and building." />
+          <Field label="Bio" htmlFor="pf-bio" error={err("bio")}>
+            <Textarea id="pf-bio" rows={3} maxLength={280} placeholder="What you're learning and building." {...form.register("bio")} {...invalid("pf-bio", err("bio"))} />
           </Field>
           <label htmlFor="pf-emails" className="flex cursor-pointer items-start gap-3 rounded-xl bg-surface p-3.5">
             <input
               id="pf-emails"
               type="checkbox"
               className="mt-0.5 size-4 accent-primary"
-              checked={emails}
-              onChange={(e) => setEmails(e.target.checked)}
+              {...form.register("emailNotifications")}
             />
             <span className="text-sm">
               <span className="font-medium">Learning emails</span>

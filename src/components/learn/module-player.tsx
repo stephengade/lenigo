@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ButtonLink } from "@/components/button-link";
 import { Progress } from "@/components/form-field";
+import { MobileStepBar } from "@/components/learn/mobile-step-bar";
 import { formatMinutes } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import { learnPath, type ModuleStep } from "@/lib/module-steps";
@@ -12,22 +13,23 @@ import type { StepContext } from "@/app/c/[community]/[space]/learn/[track]/[mod
 const KIND_LABEL = { lesson: "Lesson", quiz: "Quiz", project: "Project" } as const;
 
 /**
- * The course-player frame around one step: a header, the step itself, a footer whose
- * "Mark as completed" only unlocks once the server has recorded the step as done, and the
- * module's course content on the side.
+ * The course-player frame around one step: a header, the step itself, "Mark as completed" (it
+ * only unlocks once the server has recorded the step as done) and the module's course content.
+ * From lg up the course content is a sticky sidebar and the controls sit under the step; below lg
+ * the controls and the course content live in a bar pinned to the bottom of the screen.
  */
 export function ModulePlayer({ ctx, children }: { ctx: StepContext; children: React.ReactNode }) {
-  const { w, steps, step, index, base, moduleBase } = ctx;
-  const position = steps.filter((st) => st.kind !== "project").length;
-  const label = step.kind === "project" ? "Capstone project" : `${KIND_LABEL[step.kind]} · step ${index + 1} of ${position}`;
+  const { w, steps, step, index, moduleBase } = ctx;
+  const nav = stepNav(ctx);
+  const label = `${KIND_LABEL[step.kind]} · step ${index + 1} of ${steps.length}${step.kind === "project" ? " · reviewed by a mentor" : ""}`;
 
   return (
-    <div className="space-y-5">
-      <Link href={w.preview && !w.enrollment ? `${base}/roadmap?track=${w.track.id}` : `${base}/roadmap`} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+    <div className="space-y-5 pb-32 lg:pb-0">
+      <Link href={nav.roadmapHref} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ChevronLeft className="size-4" /> Roadmap
       </Link>
 
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="min-w-0 space-y-5">
           <header className="space-y-1.5">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -48,11 +50,19 @@ export function ModulePlayer({ ctx, children }: { ctx: StepContext; children: Re
 
           {step.open ? children : <LockedStep steps={steps} index={index} moduleBase={moduleBase} />}
 
-          <StepFooter ctx={ctx} />
+          <StepFooter nav={nav} />
         </div>
 
-        <CourseContent ctx={ctx} />
+        <aside className="hidden space-y-4 lg:sticky lg:top-24 lg:block lg:max-h-[calc(100dvh-7rem)] lg:overflow-y-auto lg:pb-2">
+          <CourseContent ctx={ctx} />
+        </aside>
       </div>
+
+      <MobileStepBar prevHref={nav.prevHref} nextHref={nav.nextHref} unlocked={nav.unlocked} hint={nav.hint} position={index + 1} total={steps.length}>
+        <div className="space-y-3">
+          <CourseContent ctx={ctx} />
+        </div>
+      </MobileStepBar>
     </div>
   );
 }
@@ -78,6 +88,7 @@ function LockedStep({ steps, index, moduleBase }: { steps: ModuleStep[]; index: 
 /** What still stands between the learner and "Mark as completed". */
 function pendingReason(ctx: StepContext): string {
   const { step, w } = ctx;
+  if (!step.open) return "Finish the earlier steps first.";
   if (step.kind === "lesson") return "Watch the video to the end to unlock this. Lenigo records watch time as it plays.";
   if (step.kind === "quiz") {
     const cp = w.checkpoints.find((c) => c.id === step.id);
@@ -89,35 +100,43 @@ function pendingReason(ctx: StepContext): string {
   return "Submit your project. This unlocks once a mentor approves it.";
 }
 
-function StepFooter({ ctx }: { ctx: StepContext }) {
+type StepNav = { prevHref: string | null; nextHref: string; unlocked: boolean; hint: string; roadmapHref: string };
+
+/** Where Previous and "Mark as completed" lead, and whether the latter is unlocked yet. */
+function stepNav(ctx: StepContext): StepNav {
   const { steps, index, step, w, base, moduleBase } = ctx;
   const prev = steps[index - 1];
   const nextStep = steps[index + 1];
   const unlocked = step.open && (step.done || w.preview);
+  const roadmapHref = w.preview && !w.enrollment ? `${base}/roadmap?track=${w.track.id}` : `${base}/roadmap`;
 
-  let href: string;
+  let nextHref: string;
   let after: string;
   if (nextStep) {
-    href = `${moduleBase}/${nextStep.path}`;
+    nextHref = `${moduleBase}/${nextStep.path}`;
     after = `Next: ${nextStep.title}`;
   } else if (w.next) {
-    href = learnPath(base, w.track.slug, w.next.slug);
+    nextHref = learnPath(base, w.track.slug, w.next.slug);
     after = `Next module: ${w.next.title}`;
   } else {
-    href = w.preview && !w.enrollment ? `${base}/roadmap?track=${w.track.id}` : `${base}/roadmap`;
+    nextHref = roadmapHref;
     after = "Back to your roadmap";
   }
+  return { prevHref: prev ? `${moduleBase}/${prev.path}` : null, nextHref, unlocked, hint: unlocked ? after : pendingReason(ctx), roadmapHref };
+}
 
+/** From lg up: the controls under the step. Below lg the bottom bar takes over. */
+function StepFooter({ nav }: { nav: StepNav }) {
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:flex-row sm:items-center">
-      {prev ? (
-        <ButtonLink href={`${moduleBase}/${prev.path}`} variant="ghost" size="sm" className="self-start sm:self-auto">
+    <div className="hidden items-center gap-3 rounded-2xl border border-border bg-card p-4 lg:flex">
+      {nav.prevHref ? (
+        <ButtonLink href={nav.prevHref} variant="ghost" size="sm">
           <ChevronLeft /> Previous
         </ButtonLink>
       ) : null}
-      <p className="text-sm text-muted-foreground sm:ml-auto sm:text-right">{unlocked ? after : step.open ? pendingReason(ctx) : "Finish the earlier steps first."}</p>
-      {unlocked ? (
-        <ButtonLink href={href} className="shrink-0">
+      <p className="ml-auto text-right text-sm text-muted-foreground">{nav.hint}</p>
+      {nav.unlocked ? (
+        <ButtonLink href={nav.nextHref} className="shrink-0">
           <Check strokeWidth={3} /> Mark as completed <ChevronRight />
         </ButtonLink>
       ) : (
@@ -158,32 +177,36 @@ function StepIcon({ st }: { st: ModuleStep }) {
   );
 }
 
+/** The step list and the optional reading (sidebar from lg up, the bottom sheet below). */
 function CourseContent({ ctx }: { ctx: StepContext }) {
   const { steps, step: current, w, moduleBase } = ctx;
-  const counted = steps.filter((st) => st.tracked);
-  const done = counted.filter((st) => st.done).length;
+  // Same count as "step N of M" in the header, so the two never disagree.
+  const done = steps.filter((st) => st.done).length;
   const articles = w.resources.filter((r) => r.type === "ARTICLE");
 
   return (
-    <aside className="space-y-4 xl:sticky xl:top-24">
+    <>
       <nav aria-label="Course content" className="rounded-2xl bg-card p-4 shadow-card">
         <div className="mb-3">
           <h2 className="font-display text-base font-bold">Course content</h2>
           <div className="mt-2 flex items-center gap-3">
-            <Progress value={counted.length ? Math.round((done / counted.length) * 100) : 0} className="flex-1" />
+            <Progress value={Math.round((done / steps.length) * 100)} className="flex-1" />
             <span className="shrink-0 text-xs text-muted-foreground tabular">
-              {done}/{counted.length} done
+              {done}/{steps.length} done
             </span>
           </div>
         </div>
         <ol className="grid gap-1">
-          {steps.map((st) => {
+          {steps.map((st, i) => {
             const isCurrent = st.kind === current.kind && st.id === current.id;
             const body = (
               <>
                 <StepIcon st={st} />
                 <span className="min-w-0 flex-1">
-                  <span className={cn("block text-sm leading-snug", isCurrent && "font-semibold")}>{st.title}</span>
+                  <span className={cn("block text-sm leading-snug", isCurrent && "font-semibold")}>
+                    <span className="text-muted-foreground tabular">{i + 1}. </span>
+                    {st.title}
+                  </span>
                   <span className="block text-xs text-muted-foreground">
                     {KIND_LABEL[st.kind]}
                     {stepMeta(st, w) ? ` · ${stepMeta(st, w)}` : ""}
@@ -231,6 +254,6 @@ function CourseContent({ ctx }: { ctx: StepContext }) {
           </ul>
         </div>
       ) : null}
-    </aside>
+    </>
   );
 }

@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { ChevronLeft, Lock } from "lucide-react";
+import { Lock } from "lucide-react";
 import { TopBar } from "@/components/shell/top-bar";
-import { SpaceNav } from "@/components/shell/space-nav";
+import { SpaceFrame } from "@/components/shell/space-frame";
 import { RoleBadge } from "@/components/role-badge";
 import { JoinSpaceButton } from "@/components/community/join-space-button";
 import { pageSpace, titleNames } from "@/server/auth/guards";
@@ -75,47 +75,15 @@ export default async function SpaceLayout({
         </div>
       ) : null}
 
-      <div className="mx-auto flex max-w-7xl gap-8 px-4 sm:px-6">
-        <aside className="sticky top-20 my-6 hidden h-[calc(100dvh-6.5rem)] w-60 shrink-0 flex-col rounded-3xl bg-surface p-3 md:flex">
-          <Link
-            href={`/c/${community.slug}`}
-            className="mb-4 inline-flex items-center gap-1 px-3.5 pt-2 text-xs font-medium text-muted-foreground hover:text-foreground"
-          >
-            <ChevronLeft className="size-3.5" /> {community.name}
-          </Link>
-          <SpaceNav base={base} role={spaceRole} />
-
-          {siblings.length > 1 ? (
-            <div className="mt-auto">
-              <div className="mb-1 px-3.5 text-xs font-semibold text-muted-foreground">Your spaces</div>
-              <div className="flex flex-col gap-1">
-                {siblings.map(({ space: s }) => (
-                  <Link
-                    key={s.id}
-                    href={`/c/${community.slug}/${s.slug}`}
-                    className="flex items-center gap-2.5 rounded-full px-3 py-1.5 text-sm text-muted-foreground hover:bg-card hover:text-foreground aria-[current=true]:bg-card aria-[current=true]:font-medium aria-[current=true]:text-foreground"
-                    aria-current={s.id === space.id}
-                  >
-                    <span className="grid size-6 place-items-center rounded-lg bg-lilac-soft text-[11px] font-bold text-lilac-foreground">
-                      {s.name.slice(0, 1)}
-                    </span>
-                    <span className="truncate">{s.name}</span>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </aside>
-
-        <div className="min-w-0 flex-1 py-8">
-          <div className="-mx-4 mb-6 overflow-x-auto px-4 pb-1 md:hidden">
-            <div className="w-max">
-              <SpaceNav base={base} role={spaceRole} row />
-            </div>
-          </div>
-          {children}
-        </div>
-      </div>
+      <SpaceFrame
+        base={base}
+        role={spaceRole}
+        community={{ name: community.name, slug: community.slug }}
+        siblings={siblings.map(({ space: s }) => ({ id: s.id, name: s.name, slug: s.slug }))}
+        currentSpaceId={space.id}
+      >
+        {children}
+      </SpaceFrame>
     </div>
   );
 }

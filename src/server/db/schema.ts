@@ -1077,6 +1077,21 @@ export const communityRequests = pgTable(
   ],
 ).enableRLS();
 
+/**
+ * Sign-in code requests, for rate limiting only. `key` is an HMAC of "email:…", "ip:…" or
+ * "miss:…" (an unknown address from that IP), so no address or IP is stored. Rows older than a
+ * day are deleted as new ones arrive.
+ */
+export const signInRequests = pgTable(
+  "sign_in_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    key: text("key").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("sign_in_requests_key_idx").on(t.key, t.createdAt)],
+).enableRLS();
+
 /* ───────────────────────────── Types ───────────────────────────── */
 
 export type User = typeof users.$inferSelect;

@@ -11,35 +11,36 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api, apiError } from "@/lib/api";
 import { cn, slugify } from "@/lib/utils";
+import { FieldError, invalid } from "@/components/form-field";
+import { useZodForm } from "@/components/use-zod-form";
+import { createSpaceSchema } from "@/lib/schemas";
 
 export function CreateSpaceDialog({ communitySlug }: { communitySlug: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
-  const [name, setName] = useState("");
-  const [slug, setSlug] = useState("");
+  /** The slug follows the name until someone edits it by hand. */
   const [slugTouched, setSlugTouched] = useState(false);
-  const [description, setDescription] = useState("");
-  const [joinPolicy, setJoinPolicy] = useState<"OPEN" | "INVITE">("OPEN");
+  const form = useZodForm(createSpaceSchema, { name: "", slug: "", description: "", joinPolicy: "OPEN" });
+  const { register, formState } = form;
+  const err = (k: keyof typeof formState.errors) => formState.errors[k]?.message;
+  const joinPolicy = form.watch("joinPolicy");
 
-  const effectiveSlug = slugTouched ? slug : slugify(name);
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
+  const submit = form.handleSubmit((v) => {
     start(async () => {
       const { data, error } = await api.c({ community: communitySlug }).spaces.post({
-        name,
-        slug: effectiveSlug || undefined,
-        description: description || undefined,
-        joinPolicy,
+        name: v.name,
+        slug: v.slug || undefined,
+        description: v.description ?? undefined,
+        joinPolicy: v.joinPolicy,
       });
       if (error) return void toast.error(apiError(error));
-      toast.success(`${name} is live`);
+      toast.success(`${v.name} is live`);
       setOpen(false);
       router.push(`/c/${communitySlug}/${data.slug}`);
       router.refresh();
     });
-  }
+  });
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -47,7 +48,7 @@ export function CreateSpaceDialog({ communitySlug }: { communitySlug: string }) 
         <Plus /> New space
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
-        <form onSubmit={submit} className="space-y-5">
+        <form noValidate onSubmit={submit} className="space-y-5">
           <DialogHeader>
             <DialogTitle>Create a space</DialogTitle>
             <DialogDescription>A space is a track group inside your community, like Web Development or Data Science.</DialogDescription>
@@ -55,27 +56,36 @@ export function CreateSpaceDialog({ communitySlug }: { communitySlug: string }) 
 
           <div className="space-y-1.5">
             <Label htmlFor="space-name">Name</Label>
-            <Input id="space-name" required minLength={2} maxLength={60} value={name} onChange={(e) => setName(e.target.value)} placeholder="Web Development" />
+            <Input
+              id="space-name"
+              maxLength={60}
+              placeholder="Web Development"
+              {...register("name", {
+                onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+                  if (!slugTouched) form.setValue("slug", slugify(e.target.value), { shouldValidate: formState.isSubmitted });
+                },
+              })}
+              {...invalid("space-name", err("name"))}
+            />
+            <FieldError id="space-name-error" message={err("name")} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="space-slug">URL</Label>
-            <div className="flex items-center rounded-xl border border-input bg-surface pl-4 font-mono text-xs text-muted-foreground shadow-xs focus-within:border-primary focus-within:ring-4 focus-within:ring-ring/15">
+            <div className="flex items-center rounded-control border border-input bg-surface pl-4 font-mono text-xs text-muted-foreground shadow-xs focus-within:border-primary focus-within:ring-4 focus-within:ring-ring/15">
               <span className="shrink-0">/c/{communitySlug}/</span>
               <input
                 id="space-slug"
                 className="h-8 min-w-0 flex-1 bg-transparent pr-3 text-foreground outline-none"
-                value={effectiveSlug}
-                onChange={(e) => {
-                  setSlugTouched(true);
-                  setSlug(e.target.value.toLowerCase());
-                }}
-                pattern="[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?"
+                {...register("slug", { setValueAs: (v: string) => v.toLowerCase(), onChange: () => setSlugTouched(true) })}
+                {...invalid("space-slug", err("slug"))}
               />
             </div>
+            <FieldError id="space-slug-error" message={err("slug")} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="space-desc">Description</Label>
-            <Textarea id="space-desc" maxLength={300} rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="HTML to full-stack: build and ship real web apps." />
+            <Textarea id="space-desc" maxLength={300} rows={2} placeholder="HTML to full-stack: build and ship real web apps." {...register("description")} {...invalid("space-desc", err("description"))} />
+            <FieldError id="space-desc-error" message={err("description")} />
           </div>
           <fieldset className="space-y-1.5">
             <legend className="text-sm font-medium">Who can join</legend>
@@ -89,7 +99,7 @@ export function CreateSpaceDialog({ communitySlug }: { communitySlug: string }) 
                 <button
                   type="button"
                   key={value}
-                  onClick={() => setJoinPolicy(value)}
+                  onClick={() => form.setValue("joinPolicy", value)}
                   aria-pressed={joinPolicy === value}
                   className={cn(
                     "rounded-2xl border p-3.5 text-left transition-colors",
@@ -104,7 +114,7 @@ export function CreateSpaceDialog({ communitySlug }: { communitySlug: string }) 
           </fieldset>
 
           <DialogFooter>
-            <Button type="submit" disabled={pending || name.trim().length < 2}>
+            <Button type="submit" disabled={pending}>
               {pending ? <Loader2 className="animate-spin" /> : null} Create space
             </Button>
           </DialogFooter>

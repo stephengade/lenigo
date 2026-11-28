@@ -15,6 +15,7 @@ const ERRORS: Record<string, string> = {
   link_expired: "That sign-in link has expired. Request a new one.",
   sign_in_failed: "We couldn't sign you in. Try again.",
   deactivated: "This account has been deactivated. Contact your community lead or the Lenigo team.",
+  not_invited: "There's no Lenigo account for that email yet. Open the invite link your community sent you, or ask them for one.",
 };
 
 /* What the left panel promises. No point values: learners see sources, never weights. */
@@ -59,7 +60,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <Logo className="lg:hidden" />
         <div className="m-auto w-full max-w-sm py-10">
           <h1 className="font-display text-4xl leading-[0.95] font-black tracking-tight uppercase">Sign in</h1>
-          <p className="mt-3 text-muted-foreground">New here? No sign-up needed: we email you a code, and your first sign-in creates your account. Invited? Open your invite link first.</p>
+          <p className="mt-3 text-muted-foreground">Already a member? We&rsquo;ll email you a sign-in code. New to Lenigo? Communities invite their members, so open the invite link you were sent.</p>
           {error ? (
             <p role="alert" className="mt-6 rounded-2xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
               {ERRORS[error] ?? error}

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { syncUserFromAuth } from "@/server/auth/session";
+import { NotInvitedError } from "@/server/auth/eligibility";
 import { safeNext } from "@/lib/safe-next";
 import { redeemInvite } from "@/server/services/invites";
 
@@ -40,7 +41,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "That code is wrong or has expired. Check it, or send a new one." }, { status: 401 });
   }
 
-  const row = await syncUserFromAuth(data.user, { logLogin: true });
+  let row;
+  try {
+    row = await syncUserFromAuth(data.user, { logLogin: true, invite: parsed.data.invite });
+  } catch (e) {
+    if (!(e instanceof NotInvitedError)) throw e;
+    await supabase.auth.signOut();
+    return NextResponse.json(
+      { error: "There's no Lenigo account for this email yet. Open the invite link your community sent you, or ask them for one." },
+      { status: 403 },
+    );
+  }
   if (row.deactivatedAt) {
     await supabase.auth.signOut();
     return NextResponse.json({ error: "This account has been deactivated. Contact your community lead or the Lenigo team." }, { status: 403 });

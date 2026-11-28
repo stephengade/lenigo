@@ -21,6 +21,7 @@ import { createCommunityInvite, createSpaceInvite, redeemInvite, redeemMyInvite,
 import { listActivity, setGlobalRole, setUserActive } from "@/server/services/admin";
 import { setCommunityRequestStatus, submitCommunityRequest } from "@/server/services/community-requests";
 import { community as communityRules, global, space as spaceRules } from "@/lib/permissions";
+import { EMAIL_PATTERN } from "@/lib/validate";
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -57,7 +58,8 @@ function dbError(error: unknown): { code: string; message: string } | null {
 }
 
 const Slug = t.String({ pattern: "^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$", error: "Use lowercase letters, numbers and hyphens." });
-const Email = t.String({ format: "email", error: "Enter a valid email address." });
+// The shared rule (lib/validate): needs a real domain, so "ada@gmail" is refused.
+const Email = t.String({ maxLength: 254, pattern: EMAIL_PATTERN.source, error: "Enter a full email address, like ada@gmail.com." });
 const SpaceRoleT = t.Union([t.Literal("LEAD"), t.Literal("MANAGER"), t.Literal("MENTOR"), t.Literal("MEMBER")]);
 const CommunityRoleT = t.Union([t.Literal("OWNER"), t.Literal("ADMIN"), t.Literal("MEMBER")]);
 const GlobalRoleT = t.Union([t.Literal("SUPER_ADMIN"), t.Literal("ADMIN"), t.Literal("VIEWER"), t.Literal("USER")]);

@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Loader2, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Field } from "@/components/form-field";
+import { Field, FieldError, invalid } from "@/components/form-field";
+import { useZodForm } from "@/components/use-zod-form";
+import { onboardingSchema } from "@/lib/schemas";
 import { spaceApi, useApiAction } from "@/components/use-api-action";
 import { INTAKE_QUESTIONS } from "@/lib/placement";
 import { cn } from "@/lib/utils";
@@ -30,27 +31,33 @@ export function OnboardingForm({
 }) {
   const router = useRouter();
   const { pending, run } = useApiAction();
-  const [trackId, setTrackId] = useState(enrolledTrackId ?? initial?.goalTrackId ?? tracks.find((t) => !t.locked)?.id ?? "");
-  const [experience, setExperience] = useState(initial?.experience ?? "");
-  const [links, setLinks] = useState<string[]>([...(initial?.links ?? []), "", "", ""].slice(0, 3));
-  const [hours, setHours] = useState(String(initial?.hoursPerWeek ?? 6));
+  const form = useZodForm(onboardingSchema, {
+    goalTrackId: enrolledTrackId ?? initial?.goalTrackId ?? tracks.find((t) => !t.locked)?.id ?? "",
+    experience: initial?.experience ?? "",
+    links: [...(initial?.links ?? []), "", "", ""].slice(0, 3),
+    hoursPerWeek: String(initial?.hoursPerWeek ?? 6),
+  });
+  const { register, formState } = form;
+  const trackId = form.watch("goalTrackId");
+  const linkErrors = [0, 1, 2].map((i) => formState.errors.links?.[i]?.message);
+  const errors = {
+    track: formState.errors.goalTrackId?.message,
+    experience: formState.errors.experience?.message,
+    links: linkErrors.find(Boolean),
+    hours: formState.errors.hoursPerWeek?.message,
+  };
+  const err = (k: keyof typeof errors) => errors[k];
 
   return (
     <form
+      noValidate
       className="grid gap-6"
-      onSubmit={(e) => {
-        e.preventDefault();
-        run(
-          () =>
-            spaceApi(c, s).onboarding.post({
-              goalTrackId: trackId,
-              experience,
-              links: links.filter((l) => l.trim()),
-              hoursPerWeek: Number(hours),
-            }),
-          { success: (d) => (d.enrolled ? "You're in. Here's your roadmap." : "Answers saved"), onDone: () => router.push(`/c/${c}/${s}/roadmap`) },
-        );
-      }}
+      onSubmit={form.handleSubmit((v) =>
+        run(() => spaceApi(c, s).onboarding.post(v), {
+          success: (d) => (d.enrolled ? "You're in. Here's your roadmap." : "Answers saved"),
+          onDone: () => router.push(`/c/${c}/${s}/roadmap`),
+        }),
+      )}
     >
       <fieldset className="grid gap-2">
         <legend className="mb-1 text-sm font-medium">{Q.goalTrackId.label}</legend>
@@ -63,7 +70,7 @@ export function OnboardingForm({
                 key={t.id}
                 type="button"
                 disabled={disabled}
-                onClick={() => setTrackId(t.id)}
+                onClick={() => form.setValue("goalTrackId", t.id, { shouldValidate: formState.isSubmitted })}
                 className={cn(
                   "relative rounded-2xl border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60",
                   active ? "border-primary bg-secondary ring-4 ring-ring/15" : "border-border bg-card hover:bg-surface",
@@ -82,34 +89,35 @@ export function OnboardingForm({
           })}
         </div>
         <p className="text-xs text-muted-foreground">{enrolledTrackId ? "You're already in a track. A mentor can add you to another one." : Q.goalTrackId.hint}</p>
+        <FieldError message={err("track")} />
       </fieldset>
 
-      <Field label={Q.experience.label} hint={Q.experience.hint} htmlFor="ob-exp">
-        <Textarea id="ob-exp" rows={4} required minLength={10} maxLength={2000} value={experience} onChange={(e) => setExperience(e.target.value)} />
+      <Field label={Q.experience.label} hint={Q.experience.hint} htmlFor="ob-exp" error={err("experience")}>
+        <Textarea id="ob-exp" rows={4} maxLength={2000} {...register("experience")} {...invalid("ob-exp", err("experience"))} />
       </Field>
 
-      <Field label={Q.links.label} hint={Q.links.hint}>
+      <Field label={Q.links.label} hint={Q.links.hint} error={err("links")}>
         <div className="grid gap-2">
-          {links.map((l, i) => (
+          {[0, 1, 2].map((i) => (
             <Input
               key={i}
               type="url"
               aria-label={`Link ${i + 1}`}
               placeholder={i === 0 ? "https://github.com/you" : "https://…"}
-              value={l}
               maxLength={300}
-              onChange={(e) => setLinks(links.map((x, j) => (j === i ? e.target.value : x)))}
+              {...register(`links.${i}`)}
+              aria-invalid={linkErrors[i] ? true : undefined}
             />
           ))}
         </div>
       </Field>
 
-      <Field label={Q.hoursPerWeek.label} hint={Q.hoursPerWeek.hint} htmlFor="ob-hours" className="max-w-xs">
-        <Input id="ob-hours" type="number" min={1} max={80} required value={hours} onChange={(e) => setHours(e.target.value)} />
+      <Field label={Q.hoursPerWeek.label} hint={Q.hoursPerWeek.hint} htmlFor="ob-hours" className="max-w-xs" error={err("hours")}>
+        <Input id="ob-hours" type="number" min={1} max={80} {...register("hoursPerWeek")} {...invalid("ob-hours", err("hours"))} />
       </Field>
 
       <div>
-        <Button type="submit" size="lg" disabled={pending || !trackId}>
+        <Button type="submit" size="lg" disabled={pending}>
           {pending ? <Loader2 className="animate-spin" /> : null} {enrolledTrackId ? "Save answers" : "Start learning"}
         </Button>
       </div>
