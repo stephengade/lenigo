@@ -334,7 +334,15 @@ export const app = new Elysia({ prefix: "/api" })
         {
           auth: true,
           params: t.Object({ community: Slug, space: Slug }),
-          body: t.Composite([t.Object({ role: SpaceRoleT }), InviteBody]),
+          body: t.Composite([
+            t.Object({
+              role: SpaceRoleT,
+              // Learner invites: the track (and level) they start at. Checked in the service.
+              trackId: t.Optional(t.Union([t.String({ format: "uuid", error: "Pick a track." }), t.Null()])),
+              tier: t.Optional(t.Union([t.Literal("BEGINNER"), t.Literal("INTERMEDIATE"), t.Literal("ADVANCED"), t.Null()])),
+            }),
+            InviteBody,
+          ]),
         },
       )
       .delete(

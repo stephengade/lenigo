@@ -70,6 +70,12 @@ export default async function InvitePage({
                 Joining as <RoleBadge role={invite.role} />
               </div>
               <p className="text-sm text-muted-foreground">{ROLE_BLURB[invite.role]}</p>
+              {invite.placement ? (
+                <p className="rounded-xl bg-surface px-4 py-3 text-sm">
+                  You&apos;ll start on <span className="font-semibold">{invite.placement.track}</span> at{" "}
+                  <span className="font-semibold">{invite.placement.level}</span>.
+                </p>
+              ) : null}
 
               {user ? (
                 <AcceptInvite token={token} signedInAs={user.email} lockedTo={invite.email} />

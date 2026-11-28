@@ -548,13 +548,13 @@ function Features() {
       </div>
 
       <div className="mt-12 grid gap-4 md:grid-cols-6">
-        <Tile className="md:col-span-4" title="Curated, not uploaded" body="Lessons are handpicked from YouTube, Google Drive or anywhere on the web. YouTube plays right inside Lenigo and watch time is tracked.">
+        <Tile className="md:col-span-4" title="Curated, not uploaded" body="Video lessons are handpicked from YouTube or Google Drive, with articles from anywhere on the web. Watch time is tracked, so nobody skips ahead.">
           <div className="rounded-2xl bg-surface p-4">
             <div className="flex flex-wrap gap-2">
               {[
                 [CirclePlay, "YouTube · plays in-app"],
                 [FileVideo, "Google Drive"],
-                [Link2, "Any https link"],
+                [Link2, "Articles · any https link"],
               ].map(([I, t]) => {
                 const Icon = I as typeof CirclePlay;
                 return (

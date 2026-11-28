@@ -15,7 +15,7 @@ import {
   MemberFilters,
   MemberPager,
 } from "@/components/community/member-directory";
-import { listActiveInvites } from "@/server/services/invites";
+import { invitableTracks, listActiveInvites } from "@/server/services/invites";
 import { ROLE_LABEL, SPACE_ROLES, space as rules } from "@/lib/permissions";
 
 export const metadata = { title: "Team" };
@@ -32,7 +32,7 @@ export default async function SpaceTeamPage({
     searchParams,
   ]);
   const access = await pageSpaceRole(c, s, rules.canViewTeam);
-  const [list, invites] = await Promise.all([
+  const [list, invites, tracks] = await Promise.all([
     pageSpaceMembers(access.space.id, {
       q: query.q,
       role: query.role,
@@ -42,6 +42,7 @@ export default async function SpaceTeamPage({
       communityId: access.community.id,
       spaceId: access.space.id,
     }),
+    invitableTracks(access.space.id),
   ]);
   const scope = { kind: "space" as const, communitySlug: c, spaceSlug: s };
 
@@ -139,6 +140,7 @@ export default async function SpaceTeamPage({
           <InvitePanel
             scope={scope}
             roles={rules.invitableRoles(access.spaceRole)}
+            placement={{ tracks, canPlaceAbove: rules.canPromoteLevel(access.spaceRole) }}
             invites={invites.map((i) => ({
               id: i.id,
               email: i.email,
@@ -148,6 +150,7 @@ export default async function SpaceTeamPage({
               expiresAt: i.expiresAt.toISOString(),
               expired: i.expired,
               createdBy: i.createdBy ?? i.createdByEmail,
+              placement: i.track ? `${i.track} (${i.levelTitle ?? "first level"})` : null,
             }))}
           />
         </aside>

@@ -472,7 +472,10 @@ export async function addResource(a: MemberAccess, moduleId: string, input: Reso
   let values: Omit<typeof resources.$inferInsert, "slug">;
   if (input.type === "VIDEO") {
     const source = parseVideoSource(input.url);
-    if (!source) throw fail.badRequest("Paste a YouTube, Google Drive or https link.");
+    // Learners must actually watch a lesson before they can move on, so it has to be a video Lenigo can track.
+    if (!source || source.provider === "EXTERNAL") {
+      throw fail.badRequest("Lesson videos must be a YouTube or Google Drive link, so Lenigo can check they were watched. Add other links as articles.");
+    }
     let durationSeconds = input.minutes && input.minutes > 0 ? Math.round(input.minutes * 60) : null;
     if (source.provider === "YOUTUBE" && source.providerId) {
       const fromApi = await youTubeDurationSeconds(source.providerId);

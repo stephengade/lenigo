@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, or } from "drizzle-orm";
 import { db } from "@/server/db";
 import {
   checkpoints,
@@ -114,7 +114,7 @@ export async function loadTrackProgress(opts: { trackId: string; userId: string;
       ? db
           .select({ toLevel: levelPromotions.toLevel })
           .from(levelPromotions)
-          .where(and(eq(levelPromotions.enrollmentId, enrollment.id), isNotNull(levelPromotions.placementAttemptId)))
+          .where(and(eq(levelPromotions.enrollmentId, enrollment.id), or(isNotNull(levelPromotions.placementAttemptId), eq(levelPromotions.viaInvite, true))))
           .orderBy(desc(levelPromotions.createdAt))
           .limit(1)
       : Promise.resolve([]),
