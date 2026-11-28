@@ -12,7 +12,7 @@ import { spaceApi, useApiAction } from "@/components/use-api-action";
 import { INTAKE_QUESTIONS } from "@/lib/placement";
 import { cn } from "@/lib/utils";
 
-type TrackOption = { id: string; title: string; description: string | null; locked: string | null };
+type TrackOption = { id: string; title: string; description: string | null; locked: string | null; stacks: { slug: string; title: string; description: string | null }[] };
 const Q = Object.fromEntries(INTAKE_QUESTIONS.map((q) => [q.key, q])) as Record<(typeof INTAKE_QUESTIONS)[number]["key"], (typeof INTAKE_QUESTIONS)[number]>;
 
 export function OnboardingForm({
@@ -33,15 +33,20 @@ export function OnboardingForm({
   const { pending, run } = useApiAction();
   const form = useZodForm(onboardingSchema, {
     goalTrackId: enrolledTrackId ?? initial?.goalTrackId ?? tracks.find((t) => !t.locked)?.id ?? "",
+    stack: "",
     experience: initial?.experience ?? "",
     links: [...(initial?.links ?? []), "", "", ""].slice(0, 3),
     hoursPerWeek: String(initial?.hoursPerWeek ?? 6),
   });
   const { register, formState } = form;
   const trackId = form.watch("goalTrackId");
+  const stack = form.watch("stack");
+  // Pick once: a track with options (Node.js or Python, React or Vue) asks which one here, and it holds for every level.
+  const stacks = enrolledTrackId ? [] : (tracks.find((t) => t.id === trackId)?.stacks ?? []);
   const linkErrors = [0, 1, 2].map((i) => formState.errors.links?.[i]?.message);
   const errors = {
     track: formState.errors.goalTrackId?.message,
+    stack: formState.errors.stack?.message,
     experience: formState.errors.experience?.message,
     links: linkErrors.find(Boolean),
     hours: formState.errors.hoursPerWeek?.message,
@@ -52,12 +57,16 @@ export function OnboardingForm({
     <form
       noValidate
       className="grid gap-6"
-      onSubmit={form.handleSubmit((v) =>
-        run(() => spaceApi(c, s).onboarding.post(v), {
+      onSubmit={form.handleSubmit((v) => {
+        if (stacks.length && !stacks.some((x) => x.slug === v.stack)) {
+          form.setError("stack", { message: "Pick the one you want to learn." });
+          return;
+        }
+        return run(() => spaceApi(c, s).onboarding.post({ ...v, stack: stacks.length ? v.stack : null }), {
           success: (d) => (d.enrolled ? "You're in. Here's your roadmap." : "Answers saved"),
           onDone: () => router.push(`/c/${c}/${s}/roadmap`),
-        }),
-      )}
+        });
+      })}
     >
       <fieldset className="grid gap-2">
         <legend className="mb-1 text-sm font-medium">{Q.goalTrackId.label}</legend>
@@ -70,7 +79,11 @@ export function OnboardingForm({
                 key={t.id}
                 type="button"
                 disabled={disabled}
-                onClick={() => form.setValue("goalTrackId", t.id, { shouldValidate: formState.isSubmitted })}
+                onClick={() => {
+                  form.setValue("goalTrackId", t.id, { shouldValidate: formState.isSubmitted });
+                  form.setValue("stack", "");
+                  form.clearErrors("stack");
+                }}
                 className={cn(
                   "relative rounded-2xl border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60",
                   active ? "border-primary bg-secondary ring-4 ring-ring/15" : "border-border bg-card hover:bg-surface",
@@ -91,6 +104,37 @@ export function OnboardingForm({
         <p className="text-xs text-muted-foreground">{enrolledTrackId ? "You're already in a track. A mentor can add you to another one." : Q.goalTrackId.hint}</p>
         <FieldError message={err("track")} />
       </fieldset>
+
+      {stacks.length ? (
+        <fieldset className="grid gap-2">
+          <legend className="mb-1 text-sm font-medium">Which one do you want to learn?</legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {stacks.map((x) => {
+              const active = stack === x.slug;
+              return (
+                <button
+                  key={x.slug}
+                  type="button"
+                  onClick={() => form.setValue("stack", x.slug, { shouldValidate: formState.isSubmitted })}
+                  className={cn(
+                    "relative rounded-2xl border p-4 text-left transition-colors",
+                    active ? "border-primary bg-secondary ring-4 ring-ring/15" : "border-border bg-card hover:bg-surface",
+                  )}
+                  aria-pressed={active}
+                >
+                  <span className="flex items-center gap-2 font-display font-bold">
+                    {x.title}
+                    {active ? <Check className="ml-auto size-4 text-primary" strokeWidth={3} /> : null}
+                  </span>
+                  {x.description ? <span className="mt-1 line-clamp-2 block text-sm text-muted-foreground">{x.description}</span> : null}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-muted-foreground">You&apos;ll only see lessons and placement questions for this one, at every level. You can switch before you start it.</p>
+          <FieldError message={err("stack")} />
+        </fieldset>
+      ) : null}
 
       <Field label={Q.experience.label} hint={Q.experience.hint} htmlFor="ob-exp" error={err("experience")}>
         <Textarea id="ob-exp" rows={4} maxLength={2000} {...register("experience")} {...invalid("ob-exp", err("experience"))} />

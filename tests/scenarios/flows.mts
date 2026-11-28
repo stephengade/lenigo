@@ -180,9 +180,13 @@ await ok("publish Fullstack", async () => {
 console.log("\nOnboarding and enrolment");
 await refuses("can't start with a track that has a prerequisite", () => learning.completeOnboarding(B, { goalTrackId: fs.id, experience: "Some HTML at school", links: [], hoursPerWeek: 5 }), /prerequisite/);
 await refuses("intake links must be https", () => learning.completeOnboarding(A, { goalTrackId: fe.id, experience: "Built a site", links: ["http://x.com"], hoursPerWeek: 5 }), /https/);
-const onA = await ok("learner A onboards into Frontend", () => learning.completeOnboarding(A, { goalTrackId: fe.id, experience: "I built a portfolio once", links: ["https://github.com/a"], hoursPerWeek: 8 }));
+const feStacks = (await learning.trackStacks([fe.id])).get(fe.id) ?? [];
+check("Frontend's stacks are its options, in order", feStacks.map((x) => x.title).join() === "React + Next.js,Vue + Nuxt");
+await refuses("joining a track with options needs a pick", () => learning.completeOnboarding(A, { goalTrackId: fe.id, experience: "I built a portfolio once", links: [], hoursPerWeek: 8 }), /Pick how you want to learn Frontend/);
+await refuses("an option from nowhere is refused", () => learning.completeOnboarding(A, { goalTrackId: fe.id, stack: "angular", experience: "I built a portfolio once", links: [], hoursPerWeek: 8 }), /Pick how/);
+const onA = await ok("learner A onboards into Frontend with React", () => learning.completeOnboarding(A, { goalTrackId: fe.id, stack: feStacks[0].slug, experience: "I built a portfolio once", links: ["https://github.com/a"], hoursPerWeek: 8 }));
 check("A is enrolled", !!onA?.enrolled);
-await ok("learner B onboards into Frontend", () => learning.completeOnboarding(B, { goalTrackId: fe.id, experience: "I know HTML and CSS well", links: [], hoursPerWeek: 10 }));
+await ok("learner B onboards into Frontend with Vue", () => learning.completeOnboarding(B, { goalTrackId: fe.id, stack: feStacks[1].slug, experience: "I know HTML and CSS well", links: [], hoursPerWeek: 10 }));
 const eA = (await db.select().from(S.trackEnrollments).where(eq(S.trackEnrollments.userId, U.a)))[0];
 const eB = (await db.select().from(S.trackEnrollments).where(eq(S.trackEnrollments.userId, U.b)))[0];
 await refuses("DB: learner can't self-enrol in a second track", () => db.insert(S.trackEnrollments).values({ trackId: fs.id, spaceId: space.id, communityId: community.id, userId: U.a }), /approval|prerequisite/);
@@ -462,7 +466,7 @@ const eA2 = (await db.select().from(S.trackEnrollments).where(eq(S.trackEnrollme
 check("A is Intermediate", eA2.tier === "INTERMEDIATE");
 pA = await learning.loadTrackProgress({ trackId: fe.id, userId: U.a, enrollment: eA2, preview: false });
 const inter = pA.levels.find((l) => l.tier === "INTERMEDIATE")!;
-check("intermediate visible; options need a pick", inter.reachable && inter.needsBranch && inter.modules.every((m) => !m.branchId));
+check("intermediate visible with the React modules A picked when joining", inter.reachable && !inter.needsBranch && inter.chosenBranchId === react.id && inter.modules.some((m) => m.branchId === react.id) && inter.modules.every((m) => !m.branchId || m.branchId === react.id));
 await refuses("B can't pick a branch above their level", () => learning.chooseBranch(B, eB.id, react.id), /reach that level/);
 await refuses("B can't choose for A", () => learning.chooseBranch(B, eA.id, react.id), /Only the learner/);
 await ok("A picks React", () => learning.chooseBranch(A, eA.id, react.id));
@@ -555,6 +559,90 @@ console.log("\nInvites that start a learner on a track");
   check("the skip is recorded on the redemption", reds.some((r) => JSON.stringify(r.metadata).includes("own invite")));
   // Throwaway people: remove them so the member and user counts later on stay as they were.
   await ok("remove the invited test learners", () => db.delete(S.users).where(sql`${S.users.id} in (${ada.id}, ${ben.id})`));
+}
+
+console.log("\nOne stack per track (picked when joining)");
+{
+  const person = async (k: string) => {
+    const u = (await db.insert(S.users).values({ id: uid(), email: `${k}@example.test`, name: k, username: k }).returning())[0];
+    await db.insert(S.communityMembers).values({ communityId: community.id, userId: u.id, role: "MEMBER" });
+    await db.insert(S.spaceMembers).values({ spaceId: space.id, communityId: community.id, userId: u.id, role: "MEMBER" });
+    return { u, acc: { ...as(U.a, "MEMBER"), user: u } as MemberAccess };
+  };
+  const intake = { experience: "I have written some scripts", links: [], hoursPerWeek: 6 };
+  const be = (await ok("Lead creates Backend with Node.js and Python in both levels", async () => {
+    const t = await curriculum.createTrack(lead, { title: "Backend" });
+    const e = await curriculum.getTrackEditor(lead, t.id);
+    const [b1, b2] = e.levels;
+    const mod = async (levelId: string, title: string, branchId?: string) => {
+      const m = await curriculum.createModule(lead, levelId, { title, branchId });
+      await curriculum.updateModule(lead, m.id, { projectBriefMd: "Build it" });
+      const c = await curriculum.addCheckpoint(lead, m.id, { title: "Check" });
+      await curriculum.addQuestion(lead, c.id, { prompt: "Which one?", options: ["a", "b"], correctOptionIndex: 0 });
+      await curriculum.updateModule(lead, m.id, { isPublished: true });
+      return m;
+    };
+    const opts: Record<string, { id: string }> = {};
+    for (const [lv, tier] of [[b1, "B"], [b2, "I"]] as const) {
+      await mod(lv.id, `${tier} core`);
+      opts[`${tier}node`] = await curriculum.createBranch(lead, lv.id, { title: "JavaScript (Node.js)" });
+      opts[`${tier}py`] = await curriculum.createBranch(lead, lv.id, { title: "Python (FastAPI)" });
+      await mod(lv.id, `${tier} Express`, opts[`${tier}node`].id);
+      await mod(lv.id, `${tier} FastAPI`, opts[`${tier}py`].id);
+      await curriculum.updateLevel(lead, lv.id, { isPublished: true });
+    }
+    await curriculum.updateTrack(lead, t.id, { isPublished: true, placementTaskMd: "Build a notes API" });
+    return { ...t, levels: [b1, b2], opts };
+  }))!;
+  const { opts } = be;
+  const stacks = (await learning.trackStacks([be.id])).get(be.id) ?? [];
+  check("one Node.js and one Python stack across both levels", stacks.map((x) => x.title).join() === "JavaScript (Node.js),Python (FastAPI)");
+  const py = stacks[1].slug;
+
+  const P = await person("stack-py");
+  await ok("P joins Backend with Python", () => learning.completeOnboarding(P.acc, { goalTrackId: be.id, stack: py, ...intake }));
+  const eP = (await db.select().from(S.trackEnrollments).where(and(eq(S.trackEnrollments.userId, P.u.id), eq(S.trackEnrollments.trackId, be.id))))[0];
+  const choices = await db.select().from(S.enrollmentBranches).where(eq(S.enrollmentBranches.enrollmentId, eP.id));
+  check("Python is set in both levels at once", choices.length === 2 && choices.every((c) => c.branchId === opts.Bpy.id || c.branchId === opts.Ipy.id));
+  const prog = await learning.loadTrackProgress({ trackId: be.id, userId: P.u.id, enrollment: eP, preview: false });
+  const beg = prog.levels.find((l) => l.tier === "BEGINNER")!;
+  check("P's Beginner shows core + FastAPI only, nothing to pick", !beg.needsBranch && beg.modules.map((m) => m.title).join() === "B core,B FastAPI");
+
+  // Placement bank: 3 for everyone, 3 Node-only, 3 Python-only.
+  await refuses("a placement question can't be tied to an Intermediate option", () => curriculum.addPlacementQuestion(lead, be.id, { prompt: "Which one?", options: ["a", "b"], correctOptionIndex: 0, branchId: opts.Ipy.id }), /first level/);
+  await refuses("nor to another track's option", () => curriculum.addPlacementQuestion(lead, be.id, { prompt: "Which one?", options: ["a", "b"], correctOptionIndex: 0, branchId: react.id }), /first level/);
+  await refuses("DB: a placement question's option must be in its own track", () => db.insert(S.placementQuestions).values({ trackId: be.id, spaceId: space.id, prompt: "Which one?", options: ["a", "b"], correctOptionIndex: 0, branchId: react.id }), /placement_questions_branch_same_track_fk|foreign key/);
+  const ids: Record<string, string[]> = { all: [], node: [], py: [] };
+  await ok("bank: 3 shared, 3 Node.js, 3 Python", async () => {
+    for (const [k, branchId] of [["all", null], ["node", opts.Bnode.id], ["py", opts.Bpy.id]] as const)
+      for (let i = 0; i < 3; i++) ids[k].push((await curriculum.addPlacementQuestion(lead, be.id, { prompt: `${k} ${i}?`, options: ["a", "b"], correctOptionIndex: 0, branchId })).id);
+  });
+  const ed = await curriculum.getTrackEditor(lead, be.id);
+  check("editor offers only the first level's options", ed.placementOptions.map((o) => o.id).join() === [opts.Bnode.id, opts.Bpy.id].join());
+  const attP = (await ok("P starts the placement test", () => placement.startPlacement(P.acc, be.id)))!;
+  const [rowP] = await db.select().from(S.placementAttempts).where(eq(S.placementAttempts.id, attP.id));
+  check("P's test has only shared and Python questions", rowP.questionIds.length === 6 && rowP.questionIds.every((id) => ids.all.includes(id) || ids.py.includes(id)));
+
+  const N = await person("stack-none");
+  await ok("a mentor adds N to Backend (no stack picked yet)", () => learning.enrolLearner(mentor, { userId: N.u.id, trackId: be.id }));
+  const offerN = await placement.placementOffer(space.id, be.id, N.u.id);
+  check("no test until N picks a stack", !offerN.offered);
+  await refuses("so N can't start one", () => placement.startPlacement(N.acc, be.id), /doesn't offer/);
+  const eN = (await db.select().from(S.trackEnrollments).where(and(eq(S.trackEnrollments.userId, N.u.id), eq(S.trackEnrollments.trackId, be.id))))[0];
+  await ok("N picks Node.js at Beginner", () => learning.chooseBranch(N.acc, eN.id, opts.Bnode.id));
+  const nIntermediate = async () => (await db.select().from(S.enrollmentBranches).where(and(eq(S.enrollmentBranches.enrollmentId, eN.id), eq(S.enrollmentBranches.levelId, be.levels[1].id))))[0]?.branchId;
+  check("the pick carries to Intermediate", (await nIntermediate()) === opts.Inode.id);
+  await ok("N switches to Python before starting", () => learning.chooseBranch(N.acc, eN.id, opts.Bpy.id));
+  check("Intermediate follows the switch", (await nIntermediate()) === opts.Ipy.id);
+  const attN = (await ok("N can now take the test", () => placement.startPlacement(N.acc, be.id)))!;
+  const [rowN] = await db.select().from(S.placementAttempts).where(eq(S.placementAttempts.id, attN.id));
+  check("N's test has no Node.js questions", rowN.questionIds.every((id) => !ids.node.includes(id)));
+
+  // Throwaway track and people: remove them so later counts stay as they were.
+  await ok("remove the Backend test track and learners", async () => {
+    await db.delete(S.tracks).where(eq(S.tracks.id, be.id));
+    await db.delete(S.users).where(sql`${S.users.id} in (${P.u.id}, ${N.u.id})`);
+  });
 }
 
 console.log("\nStandups, streaks, feed");

@@ -90,6 +90,8 @@ export const inviteSchema = z
 
 export const onboardingSchema = z.object({
   goalTrackId: z.string().trim().min(1, "Pick the track you want to start with."),
+  /** The track's option (stack) slug, e.g. "python-fastapi". Required by the server when the track has options. */
+  stack: z.string().trim().max(100).optional(),
   experience: textField("a little about your experience", { min: 10, max: 2000 }),
   links: z.array(urlField("link")).transform((l) => l.filter((x): x is string => !!x)),
   hoursPerWeek: intField("hours per week", { min: 1, max: 80, required: true }).transform((n) => n as number),

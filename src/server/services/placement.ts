@@ -1,7 +1,7 @@
 import "server-only";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import { db } from "@/server/db";
-import { placementAttempts, placementQuestions, trackEnrollments, tracks, users } from "@/server/db/schema";
+import { enrollmentBranches, levels, placementAttempts, placementQuestions, trackBranches, trackEnrollments, tracks, users } from "@/server/db/schema";
 import { fail, type MemberAccess } from "@/server/auth/access";
 import { parseHttpsUrl } from "@/lib/validate";
 import { logActivity } from "@/server/activity";
@@ -21,12 +21,47 @@ const httpsUrl = (raw: string | null | undefined, label: string) => {
   return u;
 };
 
+/**
+ * The questions this learner's test can draw from: those for everyone on the track, plus
+ * those for the option (stack) they chose in the first level. When the first level has
+ * options and they haven't chosen one, there's no pool yet: a test never mixes stacks.
+ */
+async function questionPool(trackId: string, userId: string) {
+  const firstLevelOptions = await db
+    .select({ id: trackBranches.id })
+    .from(trackBranches)
+    .innerJoin(levels, eq(levels.id, trackBranches.levelId))
+    .where(and(eq(trackBranches.trackId, trackId), eq(levels.tier, "BEGINNER")));
+  let branchId: string | null = null;
+  if (firstLevelOptions.length) {
+    const [chosen] = await db
+      .select({ branchId: enrollmentBranches.branchId })
+      .from(enrollmentBranches)
+      .innerJoin(trackEnrollments, eq(trackEnrollments.id, enrollmentBranches.enrollmentId))
+      .where(and(eq(trackEnrollments.trackId, trackId), eq(trackEnrollments.userId, userId), inArray(enrollmentBranches.branchId, firstLevelOptions.map((b) => b.id))))
+      .limit(1);
+    if (!chosen) return { needsOption: true as const, ids: [] as string[] };
+    branchId = chosen.branchId;
+  }
+  const rows = await db
+    .select({ id: placementQuestions.id })
+    .from(placementQuestions)
+    .where(
+      and(
+        eq(placementQuestions.trackId, trackId),
+        eq(placementQuestions.isActive, true),
+        branchId ? or(isNull(placementQuestions.branchId), eq(placementQuestions.branchId, branchId)) : isNull(placementQuestions.branchId),
+      ),
+    );
+  return { needsOption: false as const, ids: rows.map((r) => r.id) };
+}
+
 /** What the learner may do about a placement test in one track. */
 export async function placementOffer(spaceId: string, trackId: string, userId: string) {
   const [track] = await db.select().from(tracks).where(and(eq(tracks.id, trackId), eq(tracks.spaceId, spaceId))).limit(1);
   if (!track?.placementTaskMd) return { offered: false as const };
-  const bank = await db.select({ id: placementQuestions.id }).from(placementQuestions).where(and(eq(placementQuestions.trackId, trackId), eq(placementQuestions.isActive, true)));
-  if (bank.length < MIN_BANK) return { offered: false as const };
+  const pool = await questionPool(trackId, userId);
+  if (pool.ids.length < MIN_BANK) return { offered: false as const };
   const [latest] = await db.select().from(placementAttempts).where(and(eq(placementAttempts.trackId, trackId), eq(placementAttempts.userId, userId))).orderBy(desc(placementAttempts.startedAt)).limit(1);
   const retakeAt = latest ? new Date(latest.startedAt.getTime() + PLACEMENT.retakeAfterDays * 86_400_000) : null;
   return { offered: true as const, latest: latest ?? null, canStart: !latest || retakeAt! <= new Date(), retakeAt };
@@ -40,9 +75,9 @@ export async function startPlacement(a: MemberAccess, trackId: string) {
   if (!offer.offered) throw fail.conflict("This track doesn't offer a placement test.");
   if (!offer.canStart) throw fail.tooMany(`You can take the test again on ${offer.retakeAt!.toDateString()}.`);
 
-  const bank = await db.select({ id: placementQuestions.id }).from(placementQuestions).where(and(eq(placementQuestions.trackId, trackId), eq(placementQuestions.isActive, true)));
+  // Only the learner's own stack (plus questions for everyone), never the other options'.
+  const { ids } = await questionPool(trackId, a.user.id);
   // Fisher–Yates with crypto randomness: the draw can't be predicted.
-  const ids = bank.map((q) => q.id);
   for (let i = ids.length - 1; i > 0; i--) {
     const j = crypto.getRandomValues(new Uint32Array(1))[0] % (i + 1);
     [ids[i], ids[j]] = [ids[j], ids[i]];

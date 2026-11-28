@@ -380,6 +380,8 @@ export const trackBranches = pgTable(
     uniqueIndex("track_branches_level_slug_key").on(t.levelId, t.slug),
     // Target for composite FKs that keep a branch inside its own level.
     unique("track_branches_id_level_key").on(t.id, t.levelId),
+    // Target for composite FKs that keep a branch inside its own track.
+    unique("track_branches_id_track_key").on(t.id, t.trackId),
   ],
 ).enableRLS();
 
@@ -805,10 +807,22 @@ export const placementQuestions = pgTable(
     options: jsonb("options").$type<string[]>().notNull(),
     /** Never sent to members: grading happens on the server. */
     correctOptionIndex: smallint("correct_option_index").notNull(),
+    /**
+     * Null = asked of everyone on the track. Set = only for learners who chose this
+     * option (e.g. "Python (FastAPI)") in the first level, so a test never mixes stacks.
+     */
+    branchId: uuid("branch_id"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: createdAt(),
   },
-  (t) => [index("placement_questions_track_idx").on(t.trackId)],
+  (t) => [
+    index("placement_questions_track_idx").on(t.trackId),
+    foreignKey({
+      columns: [t.branchId, t.trackId],
+      foreignColumns: [trackBranches.id, trackBranches.trackId],
+      name: "placement_questions_branch_same_track_fk",
+    }).onDelete("cascade"),
+  ],
 ).enableRLS();
 
 /**
