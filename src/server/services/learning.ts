@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, inArray, isNotNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { db } from "@/server/db";
 import {
   checkpoints,
@@ -799,11 +799,6 @@ export async function submitCheckpoint(a: MemberAccess, checkpointId: string, an
       if (!p?.done) throw fail.forbidden(`Finish "${r.title}" before this checkpoint.`);
     }
   }
-  const mine = await db.select().from(quizAttempts).where(and(eq(quizAttempts.checkpointId, cp.id), eq(quizAttempts.userId, a.user.id))).orderBy(desc(quizAttempts.createdAt));
-  if (mine.some((t) => t.passed)) throw fail.conflict("You've already passed this checkpoint.");
-  const wait = cooldownUntil(mine);
-  if (wait) throw fail.tooMany(`Two misses in a row. Rewatch the lesson and try again in ${Math.ceil((wait.getTime() - Date.now()) / 60000)} min.`);
-
   const qs = await db.select().from(quizQuestions).where(eq(quizQuestions.checkpointId, cp.id)).orderBy(asc(quizQuestions.position));
   if (!qs.length) throw fail.conflict("This checkpoint has no questions yet.");
   if (answers.length !== qs.length) throw fail.badRequest("Answer every question.");
@@ -815,6 +810,19 @@ export async function submitCheckpoint(a: MemberAccess, checkpointId: string, an
   const passed = scorePct >= cp.passThreshold;
 
   await db.transaction(async (tx) => {
+    // One attempt at a time per learner and checkpoint. Without this, answers sent together all read
+    // the same history, so each skips the cooldown and reports which questions it got wrong:
+    // enough to work out every answer. The lock is released when the transaction ends.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`checkpoint:${cp.id}:${a.user.id}`}, 0))`);
+    const mine = await tx
+      .select({ passed: quizAttempts.passed, createdAt: quizAttempts.createdAt })
+      .from(quizAttempts)
+      .where(and(eq(quizAttempts.checkpointId, cp.id), eq(quizAttempts.userId, a.user.id)))
+      .orderBy(desc(quizAttempts.createdAt));
+    if (mine.some((t) => t.passed)) throw fail.conflict("You've already passed this checkpoint.");
+    const wait = cooldownUntil(mine);
+    if (wait) throw fail.tooMany(`Two misses in a row. Rewatch the lesson and try again in ${Math.ceil((wait.getTime() - Date.now()) / 60000)} min.`);
+
     await tx.insert(quizAttempts).values({ checkpointId: cp.id, moduleId: cp.moduleId, spaceId: a.space.id, userId: a.user.id, scorePct, passed, answers });
     if (passed) {
       if (!open.node.placedOut) {
